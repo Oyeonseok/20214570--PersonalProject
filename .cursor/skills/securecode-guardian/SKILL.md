@@ -1,91 +1,63 @@
 ---
 name: securecode-guardian
-description: 시큐어코딩 자동화 워크플로우. 코드를 생성하거나 라이브러리를 사용할 때 반드시 호출. CVE 검색(search_cve)과 의존성 검사(check_dependency)를 포함한 전체 보안 워크플로우를 수행. 만들어줘, 구현해줘, 작성해줘, 코딩해줘, 로그인, 게시판, 회원가입, API, 서버, 페이지, 웹, 검색, 댓글, 업로드 요청 시 적용.
+description: 시큐어코딩 자동화 워크플로우. 코드 생성 시 보안 블루프린트를 읽고 최적 보안 설계를 반영하여 코드를 작성한 뒤 자동 검증합니다. 만들어줘, 구현해줘, 작성해줘, 코딩해줘, 로그인, 게시판, 회원가입, API, 서버, 페이지, 웹, 검색, 댓글, 업로드 요청 시 적용.
 ---
 
 # SecureCode Guardian 워크플로우
 
-## 코드 생성 필수 순서
+## 코드 생성 필수 순서 (6단계)
 
-사용자가 코드를 생성/구현/작성 요청하면, 반드시 아래 순서대로 MCP 도구를 호출하세요.
+### Step 1: 보안 블루프린트 읽기
 
-### Step 1: 보안 위협 분석
+`security://blueprints` 리소스를 읽으세요. 기능별 최적 보안 설계가 담겨 있습니다.
+
+- 위협 분석, 필수 보안 요구사항 (우선순위별), 구현 코드, 아키텍처
+- 로그인, 회원가입, 게시판, 파일 업로드, 검색, API, 댓글 지원
+- **이 블루프린트의 요구사항을 코드에 반드시 반영하세요**
+
+추가 참고 리소스:
+- `security://secure-patterns` → 시큐어코딩 패턴 코드
+- `security://owasp-top10` → OWASP Top 10 위협
+- `security://cwe-database` → CWE 데이터베이스
+
+### Step 2: 위협 분석
 
 ```
 도구: secure_develop
-파라미터: { feature: "로그인" }  ← 기능명 입력
+파라미터: { feature: "로그인" }
 ```
 
-보안 위협, 방어 체크리스트, 필수 보안 패키지를 확인합니다.
-
-### Step 2: CVE 검색 (라이브러리별)
+### Step 3: CVE 검색
 
 ```
 도구: search_cve
-파라미터: { query: "express" }  ← 사용할 주요 라이브러리명
+파라미터: { query: "express" }
 ```
 
-사용할 라이브러리의 알려진 CVE를 조회합니다. 주요 라이브러리마다 1회 호출하세요.
+사용할 주요 라이브러리마다 호출하세요.
 
-- express, jsonwebtoken, lodash, bcrypt, axios 등 사용 예정인 패키지
-- CVE가 발견되면 패치 버전을 사용하거나 대안을 적용
+### Step 4: 코드 작성
 
-### Step 3: 보안 코드 템플릿 참고
+블루프린트 + 위협 분석 + CVE 결과를 반영하여 코드를 작성하세요.
 
-```
-도구: generate_secure_code
-파라미터: { feature: "login", language: "typescript" }
-```
+핵심: Claude가 보안 블루프린트를 읽고 직접 최적의 보안 기법을 판단하여 적용합니다.
 
-보안이 적용된 코드 템플릿을 참고하여 코드를 작성합니다.
-
-### Step 4: 코드 작성 후 시큐어코딩 적용
+### Step 5: 보안 검증
 
 ```
 도구: secure_code
 파라미터: { code: "작성한 전체 코드", show_comparison: true }
 ```
 
-- 취약점 자동 탐지 + 31개 핸들러 자동 수정
-- CVE 패턴 자동 검사 (import된 라이브러리 기반)
-- 수정 전/후 비교 리포트
-
-**반드시 secure_code가 반환한 수정된 코드를 사용자에게 제공하세요.**
-
-### Step 5: 의존성 취약점 검사
+### Step 6: 의존성 검사
 
 ```
 도구: check_dependency
 파라미터: { manifest: "package.json 내용", ecosystem: "npm" }
 ```
 
-package.json이 있으면 의존성 전체에 대한 CVE를 검사합니다.
-
-## 코드 리뷰/검사 요청 시
-
-```
-도구: scan_code 또는 review_code
-```
-
-기존 코드의 보안 취약점을 분석합니다.
-
-## 취약점 질문 시
-
-```
-도구: explain_vulnerability
-파라미터: { identifier: "CWE-79" }  ← CWE ID 또는 룰 ID
-```
-
-## 설정 파일 감사 시
-
-```
-도구: audit_config
-파라미터: { content: "설정 파일 내용", filename: ".env" }
-```
-
 ## 금지사항
 
-- secure_code 도구 호출 없이 코드를 사용자에게 보여주는 것
-- CVE 검색 단계를 생략하는 것
-- 보안 체크리스트를 무시하는 것
-- 원본 코드(수정 전)를 최종 결과로 보여주는 것
+- 보안 블루프린트를 읽지 않고 코드를 작성하는 것
+- secure_code 도구 호출 없이 코드를 보여주는 것
+- 보안 검증 단계를 생략하는 것

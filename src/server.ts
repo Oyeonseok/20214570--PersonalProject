@@ -16,6 +16,7 @@ import { searchCveSchema, handleSearchCve } from './tools/search-cve.js';
 import { getCweResource } from './resources/cwe-database.js';
 import { getOwaspResource } from './resources/owasp-top10.js';
 import { getSecurePatternsResource } from './resources/secure-patterns.js';
+import { getSecurityBlueprint } from './resources/security-blueprints.js';
 
 import {
   SECURE_BUILD_PROMPT,
@@ -35,32 +36,39 @@ export function createServer(): McpServer {
       instructions: [
         '# securecode-guardian: 시큐어코딩 자동화 MCP 서버',
         '',
-        '## 핵심 규칙 (반드시 준수)',
-        '이 MCP 서버가 연결되어 있으면, 사용자의 모든 코드 관련 요청에 대해 아래 도구들을 반드시 사용하세요.',
-        '코드를 직접 작성해서 보여주지 마세요. 반드시 도구를 통해 보안 검증된 코드를 제공하세요.',
+        '## 핵심 규칙',
+        '이 서버가 연결되어 있으면, 코드 관련 요청에 반드시 아래 워크플로우를 따르세요.',
         '',
-        '## 코드 생성 필수 워크플로우 (5단계)',
+        '## 코드 생성 워크플로우 (6단계)',
         '',
-        '코드 생성 요청 시 (만들어줘, 구현해줘, 작성해줘, 코딩해줘 등) 반드시 이 순서대로:',
+        '코드 생성 요청 시 (만들어줘, 구현해줘, 작성해줘 등):',
         '',
-        '1. secure_develop → 보안 위협 분석 + 체크리스트 확인',
-        '2. search_cve → 사용할 주요 라이브러리의 CVE 검색 (express, lodash 등 라이브러리마다 호출)',
-        '3. generate_secure_code → 보안 적용된 코드 템플릿 참고',
-        '4. secure_code → 작성한 코드의 취약점 자동 탐지 + 자동 수정 + CVE 패턴 검사',
-        '5. check_dependency → package.json이 있으면 의존성 전체 CVE 검사',
+        '1. **리소스 읽기**: security://blueprints 리소스를 읽어서 해당 기능의 보안 블루프린트를 확인하세요.',
+        '   - 로그인, 회원가입, 게시판, 파일업로드, 검색, API, 댓글 등의 최적 보안 설계가 포함되어 있습니다.',
+        '   - 블루프린트의 필수 보안 요구사항과 아키텍처를 반드시 반영하여 코드를 작성하세요.',
+        '2. **위협 분석**: secure_develop 호출 → 보안 위협 + 체크리스트',
+        '3. **CVE 검색**: search_cve 호출 → 주요 라이브러리 CVE 사전 조회',
+        '4. **코드 작성**: 블루프린트 + 위협 분석 + CVE 결과를 반영하여 코드 작성',
+        '5. **보안 검증**: secure_code 호출 → 자동 탐지 + 자동 수정 + CVE 패턴 검사',
+        '6. **의존성 검사**: check_dependency 호출 → 의존성 CVE 검사',
         '',
         'secure_code가 반환한 수정된 코드를 사용자에게 제공하세요.',
         '',
+        '## 보안 리소스 (코드 작성 시 참고)',
+        '- security://blueprints → 기능별 보안 설계 블루프린트 (필수 읽기)',
+        '- security://secure-patterns → 시큐어코딩 패턴 라이브러리',
+        '- security://owasp-top10 → OWASP Top 10 위협 목록',
+        '- security://cwe-database → CWE 취약점 데이터베이스',
+        '',
         '## 기타 요청',
-        '- 코드 리뷰/검사 → scan_code 또는 review_code',
+        '- 코드 리뷰 → scan_code 또는 review_code',
         '- 취약점 질문 → explain_vulnerability',
         '- 설정 파일 감사 → audit_config',
         '',
         '## 금지사항',
-        '- secure_code 도구 호출 없이 코드를 사용자에게 보여주는 것은 금지',
-        '- search_cve를 생략하고 코드를 작성하는 것은 금지',
-        '- 보안 검증 단계를 생략하는 것은 금지',
-        '- 이 규칙은 모든 프로그래밍 언어(HTML, JS, TS, Python, Java 등)에 적용',
+        '- secure_code 호출 없이 코드를 사용자에게 보여주는 것',
+        '- 보안 블루프린트를 읽지 않고 코드를 작성하는 것',
+        '- 보안 검증 단계를 생략하는 것',
       ].join('\n'),
     },
   );
@@ -165,6 +173,16 @@ export function createServer(): McpServer {
     'security://secure-patterns',
     { description: '시큐어코딩 패턴 라이브러리 (입력검증, 인증, CSRF 방지 등)', mimeType: 'text/plain' },
     async () => ({ contents: [{ uri: 'security://secure-patterns', text: getSecurePatternsResource(), mimeType: 'text/plain' }] }),
+  );
+
+  server.resource(
+    'security-blueprints',
+    'security://blueprints',
+    {
+      description: '기능별 보안 설계 블루프린트. 로그인, 회원가입, 게시판, 파일 업로드, 검색, API, 댓글 기능의 최적 보안 아키텍처와 필수 보안 요구사항을 제공합니다. 코드를 작성하기 전에 이 리소스를 반드시 읽으세요.',
+      mimeType: 'text/plain',
+    },
+    async () => ({ contents: [{ uri: 'security://blueprints', text: getSecurityBlueprint(), mimeType: 'text/plain' }] }),
   );
 
   // ─── Prompts ───

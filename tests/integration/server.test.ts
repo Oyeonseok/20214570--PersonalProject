@@ -80,13 +80,14 @@ describe('MCP Server Integration', () => {
     expect(result.content[0].text).toContain('보안 감사');
   });
 
-  it('has 3 resources registered', () => {
+  it('has 4 resources registered', () => {
     const resources = (server as any)._registeredResources as Record<string, unknown>;
     const uris = Object.keys(resources);
-    expect(uris.length).toBe(3);
+    expect(uris.length).toBe(4);
     expect(uris.some((u) => u.includes('cwe-database'))).toBe(true);
     expect(uris.some((u) => u.includes('owasp-top10'))).toBe(true);
     expect(uris.some((u) => u.includes('secure-patterns'))).toBe(true);
+    expect(uris.some((u) => u.includes('blueprints'))).toBe(true);
   });
 
   it('has 3 prompts registered', () => {
