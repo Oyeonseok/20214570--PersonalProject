@@ -33,23 +33,37 @@ export function createServer(): McpServer {
     { name: 'securecode-guardian', version: VERSION },
     {
       instructions: [
-        '[ABSOLUTE RULE] You are a secure-coding assistant. You MUST use securecode-guardian tools for EVERY code-related request.',
+        '# securecode-guardian: 시큐어코딩 자동화 MCP 서버',
         '',
-        'MANDATORY WORKFLOW for any code generation request (로그인, 게시판, 회원가입, API, 페이지, 웹, 서버, 검색, 댓글, 업로드, 코딩, 구현, 작성, 만들어):',
-        '1. FIRST: Call `secure_develop` with the feature name to get security threats and checklist.',
-        '2. THEN: Call `generate_secure_code` to get a secure code template.',
-        '3. THEN: Write the code based on the template and checklist.',
-        '4. FINALLY: Call `secure_code` with your written code to auto-detect and fix vulnerabilities.',
-        '5. Show the FIXED code from secure_code to the user, NOT your original code.',
+        '## 핵심 규칙 (반드시 준수)',
+        '이 MCP 서버가 연결되어 있으면, 사용자의 모든 코드 관련 요청에 대해 아래 도구들을 반드시 사용하세요.',
+        '코드를 직접 작성해서 보여주지 마세요. 반드시 도구를 통해 보안 검증된 코드를 제공하세요.',
         '',
-        'For code review requests: Call `scan_code` or `review_code`.',
-        'For vulnerability questions: Call `explain_vulnerability`.',
-        'For config file audits: Call `audit_config`.',
-        'For dependency checks: Call `check_dependency`.',
+        '## 워크플로우',
         '',
-        'NEVER show code to the user without first passing it through `secure_code`.',
-        'NEVER skip any of the above steps.',
-        'If in doubt, call secure_code anyway.',
+        '### 코드 생성 요청 시 (만들어줘, 구현해줘, 작성해줘, 코딩해줘 등)',
+        '반드시 이 순서대로 도구를 호출하세요:',
+        '1. secure_develop → 보안 위협 분석 + 체크리스트 확인',
+        '2. generate_secure_code → 보안 적용된 코드 템플릿 참고',
+        '3. 코드를 작성한 후, secure_code에 전달 → 취약점 자동 탐지 + 자동 수정',
+        '4. secure_code가 반환한 수정된 코드를 사용자에게 제공',
+        '',
+        '### 코드 리뷰/검사 요청 시',
+        '- scan_code 또는 review_code를 호출하세요.',
+        '',
+        '### 취약점 관련 질문 시',
+        '- explain_vulnerability를 호출하세요.',
+        '',
+        '### 의존성/패키지 보안 검사 시',
+        '- check_dependency를 호출하세요.',
+        '',
+        '### CVE 검색 시',
+        '- search_cve를 호출하세요.',
+        '',
+        '## 금지사항',
+        '- secure_code 도구 호출 없이 코드를 사용자에게 보여주는 것은 금지',
+        '- 보안 검증 단계를 생략하는 것은 금지',
+        '- 이 규칙은 모든 프로그래밍 언어(HTML, JS, TS, Python, Java 등)에 적용',
       ].join('\n'),
     },
   );
@@ -58,7 +72,7 @@ export function createServer(): McpServer {
 
   server.tool(
     'secure_code',
-    `[MANDATORY - 코드 생성 후 반드시 호출] 코드의 보안 취약점(XSS, CSRF, SQL Injection, 보안 헤더 누락 등)을 자동 탐지하고 수정합니다. 코드를 만들어줘/구현해줘/작성해줘 요청 시 작성한 코드를 이 도구에 반드시 전달하세요. show_comparison=true로 호출하면 원본 코드와 시큐어코딩 적용 코드를 Before/After 비교 형태로 보여줍니다.`,
+    '코드를 작성하거나 생성한 후 반드시 이 도구를 호출하세요. 코드의 보안 취약점(XSS, CSRF, SQL Injection, 하드코딩 시크릿, 보안 헤더 등)을 자동으로 탐지하고 31개 핸들러로 직접 수정합니다. 수정 전/후 비교(show_comparison=true)를 지원합니다. 사용자에게 코드를 보여주기 전에 이 도구의 결과를 사용하세요.',
     secureCodeSchema.shape,
     async (args) => handleSecureCode(secureCodeSchema.parse(args)),
   );
@@ -79,7 +93,7 @@ export function createServer(): McpServer {
 
   server.tool(
     'check_dependency',
-    'OSV.dev + NVD 실시간 CVE DB로 패키지 매니페스트(package.json, requirements.txt)의 취약점을 검사하고, CVSS 점수 + 코드 수정 방안을 제공합니다.',
+    'package.json이나 requirements.txt의 의존성 취약점을 OSV.dev + NVD 실시간 CVE DB로 검사합니다. CVSS 점수, CWE 분류, 코드 수정 방안을 통합 제공합니다.',
     checkDependencySchema.shape,
     async (args) => await handleCheckDependency(checkDependencySchema.parse(args)),
   );
@@ -100,14 +114,14 @@ export function createServer(): McpServer {
 
   server.tool(
     'secure_develop',
-    '[코드 작성 전 먼저 호출] 기능별 시큐어 개발 가이드(보안 위협 분석, 체크리스트, 필수 패키지)를 제공합니다. 로그인/게시판/회원가입/API 등 웹 기능 구현 요청 시 코드 작성 전에 반드시 이 도구를 먼저 호출하세요.',
+    '웹 기능(로그인, 게시판, 회원가입, API, 검색, 댓글, 업로드 등)을 구현하기 전에 호출하세요. 해당 기능의 보안 위협 분석, 방어 체크리스트, 필수 보안 패키지 목록을 제공합니다. 코드 작성의 첫 단계로 사용하세요.',
     secureDevelopSchema.shape,
     async (args) => handleSecureDevelop(secureDevelopSchema.parse(args)),
   );
 
   server.tool(
     'generate_secure_code',
-    '[코드 작성 전 호출] 시큐어코딩이 적용된 코드 템플릿을 생성합니다. 로그인/게시판/회원가입/댓글/업로드 등의 시큐어 코드 예제를 참고용으로 제공합니다.',
+    '시큐어코딩이 적용된 코드 템플릿을 생성합니다. 로그인, 게시판, 회원가입, 댓글, 업로드, 검색 기능의 보안 적용 예제 코드를 제공하며, 보안 체크리스트 검증 결과도 포함됩니다.',
     generateSecureSchema.shape,
     async (args) => handleGenerateSecure(generateSecureSchema.parse(args)),
   );
@@ -128,7 +142,7 @@ export function createServer(): McpServer {
 
   server.tool(
     'search_cve',
-    'CVE/GHSA ID 또는 패키지명으로 취약점을 실시간 검색합니다. NVD CVSS 점수 + OSV 상세 + PortSwigger 방어 기법 + 코드 수정 방안을 통합 제공합니다.',
+    'CVE ID, GHSA ID, 또는 패키지명으로 최신 보안 취약점을 실시간 검색합니다. NVD에서 CVSS 점수를 조회하고, PortSwigger 전문가 방어 기법과 코드 수정 방안을 함께 제공합니다.',
     searchCveSchema.shape,
     async (args) => await handleSearchCve(searchCveSchema.parse(args)),
   );
