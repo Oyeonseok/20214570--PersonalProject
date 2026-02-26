@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SecureCode Guardian</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --surface2: #242424;
+      --border: #333;
+      --text: #e8e8e8;
+      --text-dim: #888;
+      --accent: #4ade80;
+      --accent-dim: #22633a;
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --blue: #60a5fa;
+      --purple: #a78bfa;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Header ─── */
+    header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--surface);
+    }
+    header .logo {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    header h1 { font-size: 18px; font-weight: 600; }
+    header .status {
+      margin-left: auto;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: var(--accent-dim);
+      color: var(--accent);
+    }
+    header .status.error { background: #3b1111; color: var(--danger); }
+
+    /* ─── Chat Area ─── */
+    #chatArea {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .message {
+      max-width: 85%;
+      animation: fadeIn 0.3s ease;
+    }
+    .message.user {
+      align-self: flex-end;
+      background: #1e3a5f;
+      padding: 12px 18px;
+      border-radius: 18px 18px 4px 18px;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .message.assistant {
+      align-self: flex-start;
+      max-width: 90%;
+    }
+
+    .msg-text {
+      font-size: 15px;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg-text p { margin-bottom: 8px; }
+    .msg-text strong { color: var(--accent); }
+
+    /* ─── Code Block ─── */
+    .code-wrapper {
+      margin: 12px 0;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .code-header {
+      background: var(--surface2);
+      padding: 8px 14px;
+      font-size: 12px;
+      color: var(--text-dim);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .code-header button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 3px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .code-header button:hover { color: var(--text); border-color: var(--text-dim); }
+    .code-block {
+      background: #0d0d0d;
+      padding: 16px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre;
+      color: #ccc;
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    /* ─── Security Report ─── */
+    .security-report {
+      margin: 12px 0;
+      padding: 16px;
+      background: var(--surface);
+      border-radius: 10px;
+      border: 1px solid var(--accent-dim);
+    }
+    .report-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .report-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .report-stat {
+      background: var(--surface2);
+      padding: 10px 12px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .report-stat .num {
+      font-size: 22px;
+      font-weight: 700;
+    }
+    .report-stat .label {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .report-stat.fixed .num { color: var(--accent); }
+    .report-stat.manual .num { color: var(--warning); }
+    .report-stat.headers .num { color: var(--blue); }
+    .report-stat.issues .num { color: var(--danger); }
+
+    .fix-list { list-style: none; padding: 0; }
+    .fix-list li {
+      padding: 6px 0;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .fix-list li:last-child { border-bottom: none; }
+    .severity-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 3px;
+      white-space: nowrap;
+    }
+    .sev-critical { background: #7f1d1d; color: #fca5a5; }
+    .sev-high { background: #7c2d12; color: #fdba74; }
+    .sev-medium { background: #713f12; color: #fde047; }
+    .sev-low { background: #1e3a5f; color: #93c5fd; }
+    .sev-info { background: #1a1a2e; color: #a5b4fc; }
+
+    /* ─── Loading ─── */
+    .loading {
+      align-self: flex-start;
+      display: flex;
+      gap: 6px;
+      padding: 16px;
+    }
+    .loading .dot {
+      width: 8px; height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+    .loading .dot:nth-child(2) { animation-delay: 0.16s; }
+    .loading .dot:nth-child(3) { animation-delay: 0.32s; }
+
+    /* ─── Input ─── */
+    #inputArea {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    #msgInput {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-size: 15px;
+      font-family: inherit;
+      resize: none;
+      max-height: 150px;
+      line-height: 1.5;
+      outline: none;
+    }
+    #msgInput:focus { border-color: var(--accent); }
+    #msgInput::placeholder { color: var(--text-dim); }
+    #sendBtn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 12px;
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #sendBtn:hover { opacity: 0.9; }
+    #sendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ─── Welcome ─── */
+    .welcome {
+      text-align: center;
+      margin: auto;
+      max-width: 500px;
+    }
+    .welcome h2 { font-size: 24px; margin-bottom: 8px; }
+    .welcome p { color: var(--text-dim); font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+    .examples {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .example-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 12px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      text-align: left;
+    }
+    .example-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">🛡️</div>
+    <h1>SecureCode Guardian</h1>
+    <div class="status" id="statusBadge">확인 중...</div>
+  </header>
+
+  <div id="chatArea">
+    <div class="welcome" id="welcome">
+      <h2>🛡️ SecureCode Guardian</h2>
+      <p>웹 페이지나 기능을 요청하면 코드를 생성하고,<br>자동으로 시큐어코딩을 적용해서 반환합니다.</p>
+      <div class="examples">
+        <button class="example-btn" onclick="useExample(this)">로그인 기능을 하는 홈페이지를 만들어줘</button>
+        <button class="example-btn" onclick="useExample(this)">게시글에 글을 올리는 기능을 하는 홈페이지를 만들어줘</button>
+        <button class="example-btn" onclick="useExample(this)">회원가입 페이지를 만들어줘</button>
+        <button class="example-btn" onclick="useExample(this)">파일 업로드 기능이 있는 페이지를 만들어줘</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="inputArea">
+    <textarea id="msgInput" rows="1" placeholder="만들고 싶은 웹 페이지나 기능을 설명하세요..." onkeydown="handleKey(event)"></textarea>
+    <button id="sendBtn" onclick="sendMessage()">전송</button>
+  </div>
+
+  <script>
+    const chatArea = document.getElementById('chatArea');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const welcome = document.getElementById('welcome');
+    const statusBadge = document.getElementById('statusBadge');
+    let history = [];
+    let isLoading = false;
+
+    // 상태 확인
+    fetch('/api/status').then(r => r.json()).then(data => {
+      if (data.apiKeySet) {
+        statusBadge.textContent = '✅ 준비됨';
+        statusBadge.className = 'status';
+      } else {
+        statusBadge.textContent = '❌ API Key 미설정';
+        statusBadge.className = 'status error';
+      }
+    }).catch(() => {
+      statusBadge.textContent = '❌ 서버 오류';
+      statusBadge.className = 'status error';
+    });
+
+    // 텍스트에어리어 자동 높이
+    msgInput.addEventListener('input', () => {
+      msgInput.style.height = 'auto';
+      msgInput.style.height = Math.min(msgInput.scrollHeight, 150) + 'px';
+    });
+
+    function handleKey(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function useExample(btn) {
+      msgInput.value = btn.textContent;
+      sendMessage();
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    async function sendMessage() {
+      const msg = msgInput.value.trim();
+      if (!msg || isLoading) return;
+
+      if (welcome) welcome.remove();
+      isLoading = true;
+      sendBtn.disabled = true;
+      msgInput.value = '';
+      msgInput.style.height = 'auto';
+
+      // 유저 메시지
+      addMessage('user', msg);
+      history.push({ role: 'user', content: msg });
+
+      // 로딩
+      const loader = document.createElement('div');
+      loader.className = 'loading';
+      loader.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+      chatArea.appendChild(loader);
+      chatArea.scrollTop = chatArea.scrollHeight;
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: msg, history: history.slice(-10) }),
+        });
+
+        const data = await res.json();
+        loader.remove();
+
+        if (data.error) {
+          addMessage('assistant', `⚠️ 오류: ${data.error}`);
+          return;
+        }
+
+        // 어시스턴트 메시지 렌더링
+        const assistantDiv = document.createElement('div');
+        assistantDiv.className = 'message assistant';
+
+        // 보안 리포트
+        if (data.secured && data.securityReport) {
+          assistantDiv.appendChild(buildSecurityReport(data.securityReport));
+        }
+
+        // 응답 텍스트 렌더링 (코드블록 포함)
+        assistantDiv.appendChild(renderResponse(data.response));
+
+        chatArea.appendChild(assistantDiv);
+        history.push({ role: 'assistant', content: data.response });
+
+      } catch (err) {
+        loader.remove();
+        addMessage('assistant', `⚠️ 네트워크 오류: ${err.message}`);
+      } finally {
+        isLoading = false;
+        sendBtn.disabled = false;
+        chatArea.scrollTop = chatArea.scrollHeight;
+      }
+    }
+
+    function addMessage(role, text) {
+      const div = document.createElement('div');
+      div.className = `message ${role}`;
+      div.textContent = text;
+      chatArea.appendChild(div);
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function renderResponse(text) {
+      const container = document.createElement('div');
+      container.className = 'msg-text';
+
+      const parts = text.split(/(```\w*\n[\s\S]*?```)/g);
+      for (const part of parts) {
+        const codeMatch = part.match(/^```(\w*)\n([\s\S]*?)```$/);
+        if (codeMatch) {
+          const lang = codeMatch[1] || 'code';
+          const code = codeMatch[2];
+          container.appendChild(buildCodeBlock(lang, code));
+        } else if (part.trim()) {
+          const p = document.createElement('div');
+          p.innerHTML = formatText(part);
+          container.appendChild(p);
+        }
+      }
+      return container;
+    }
+
+    function formatText(text) {
+      return escapeHtml(text)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+    }
+
+    function buildCodeBlock(lang, code) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'code-wrapper';
+
+      const header = document.createElement('div');
+      header.className = 'code-header';
+      header.innerHTML = `<span>${escapeHtml(lang)}</span>`;
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = '복사';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(code).then(() => {
+          copyBtn.textContent = '✅ 복사됨';
+          setTimeout(() => copyBtn.textContent = '복사', 2000);
+        });
+      };
+      header.appendChild(copyBtn);
+
+      const block = document.createElement('pre');
+      block.className = 'code-block';
+      block.textContent = code;
+
+      wrapper.appendChild(header);
+      wrapper.appendChild(block);
+      return wrapper;
+    }
+
+    function buildSecurityReport(report) {
+      const blocks = report.blocks;
+      let totalFixed = 0, totalManual = 0, totalHeaders = 0, totalIssues = 0;
+      const allApplied = [];
+      const allManual = [];
+      const allHeaders = [];
+
+      for (const b of blocks) {
+        totalIssues += b.report.totalIssues;
+        totalFixed += b.report.autoFixed;
+        totalManual += b.report.manualNeeded;
+        totalHeaders += b.report.headersAdded;
+        allApplied.push(...b.report.appliedFixes);
+        allManual.push(...b.report.manualFixes);
+        for (const h of b.report.injectedHeaders) {
+          if (!allHeaders.includes(h)) allHeaders.push(h);
+        }
+      }
+
+      const total = totalFixed + totalHeaders;
+
+      const div = document.createElement('div');
+      div.className = 'security-report';
+
+      div.innerHTML = `
+        <div class="report-title">🛡️ 시큐어코딩 자동 적용 완료</div>
+        <div class="report-summary">
+          <div class="report-stat issues"><div class="num">${totalIssues}</div><div class="label">취약점 발견</div></div>
+          <div class="report-stat fixed"><div class="num">${totalFixed}</div><div class="label">자동 수정</div></div>
+          <div class="report-stat headers"><div class="num">${totalHeaders}</div><div class="label">보안 헤더 추가</div></div>
+          ${totalManual > 0 ? `<div class="report-stat manual"><div class="num">${totalManual}</div><div class="label">수동 확인</div></div>` : ''}
+        </div>
+      `;
+
+      if (allApplied.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `<div style="font-size:13px;font-weight:600;margin:8px 0 4px;color:var(--accent)">✅ 자동 수정 내역</div>`;
+        const ul = document.createElement('ul');
+        ul.className = 'fix-list';
+        for (const fix of allApplied) {
+          const li = document.createElement('li');
+          li.innerHTML = `<span class="severity-badge sev-${fix.severity}">${fix.severity.toUpperCase()}</span> <span>${escapeHtml(fix.description)}</span>`;
+          ul.appendChild(li);
+        }
+        section.appendChild(ul);
+        div.appendChild(section);
+      }
+
+      if (allHeaders.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `<div style="font-size:13px;font-weight:600;margin:8px 0 4px;color:var(--blue)">🔒 추가된 보안 헤더</div>`;
+        const ul = document.createElement('ul');
+        ul.className = 'fix-list';
+        for (const h of allHeaders) {
+          const li = document.createElement('li');
+          li.textContent = '✅ ' + h;
+          ul.appendChild(li);
+        }
+        section.appendChild(ul);
+        div.appendChild(section);
+      }
+
+      if (allManual.length > 0) {
+        const section = document.createElement('div');
+        section.innerHTML = `<div style="font-size:13px;font-weight:600;margin:8px 0 4px;color:var(--warning)">⚠️ 수동 확인 필요</div>`;
+        const ul = document.createElement('ul');
+        ul.className = 'fix-list';
+        for (const fix of allManual) {
+          const li = document.createElement('li');
+          li.innerHTML = `<span class="severity-badge sev-${fix.severity}">${fix.severity.toUpperCase()}</span> <span>${escapeHtml(fix.description)}<br><small style="color:var(--text-dim)">→ ${escapeHtml(fix.suggestion)}</small></span>`;
+          ul.appendChild(li);
+        }
+        section.appendChild(ul);
+        div.appendChild(section);
+      }
+
+      return div;
+    }
+  </script>
+</body>
+</html>

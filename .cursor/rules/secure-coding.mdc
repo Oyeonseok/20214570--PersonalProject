@@ -1,0 +1,35 @@
+---
+description: 코드 생성 시 secure_code 도구 강제 호출 - 시큐어코딩 자동 적용
+alwaysApply: true
+---
+
+# 절대 규칙: 코드 생성 시 secure_code 도구 호출 필수
+
+## 금지 사항
+
+- 웹 코드(HTML, JS, TS, Python 등)를 생성한 후 secure_code 도구를 호출하지 않고 사용자에게 제공하는 것은 **금지**입니다
+- 코드를 직접 제공하지 마세요. 반드시 secure_code 도구를 거쳐야 합니다
+
+## 필수 절차 (모든 코드 생성 요청에 적용)
+
+1. 사용자 요청에 맞는 코드를 작성한다
+2. 작성한 전체 코드를 **반드시** securecode-guardian MCP 서버의 `secure_code` 도구에 전달한다
+3. `secure_code` 도구가 반환한 시큐어코딩 적용 결과를 사용자에게 보여준다
+4. 자동 수정된 항목과 수동 확인 항목을 안내한다
+5. 최종 시큐어코딩 적용 코드를 제공한다
+
+## secure_code 도구 호출
+
+```
+MCP 서버: securecode-guardian
+도구명: secure_code
+파라미터:
+  code: (생성한 전체 소스 코드)
+  language: javascript | typescript | python | java (선택)
+  context: frontend | backend | fullstack (선택)
+```
+
+## 적용 대상 키워드
+
+사용자 메시지에 아래 키워드가 포함되면 이 절차를 따른다:
+만들어줘, 구현해줘, 작성해줘, 코딩해줘, 페이지, 홈페이지, 웹, API, 서버, 로그인, 게시판, 회원가입, 댓글, 업로드, 검색

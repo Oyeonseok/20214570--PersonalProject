@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.tsbuildinfo
+
+# IDE
+.cursor/mcp.json
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
