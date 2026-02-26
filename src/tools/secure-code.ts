@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { scanCode } from '../engine/scanner.js';
 import { applySecureFixes } from '../engine/secure-fixer.js';
+import {
+  getPatternsByPackage,
+  scanCodeForCvePatterns,
+  getAllCvePatterns,
+  type CveCodePattern,
+} from '../services/cve-code-patterns.js';
+import { getKnowledgeByCwe } from '../knowledge/portswigger-remediation.js';
 
 export const secureCodeSchema = z.object({
   code: z.string().describe('시큐어코딩을 적용할 소스 코드'),
@@ -21,7 +28,21 @@ export const secureCodeSchema = z.object({
 
 export type SecureCodeInput = z.infer<typeof secureCodeSchema>;
 
-export function handleSecureCode(input: SecureCodeInput) {
+function detectLibraries(code: string): string[] {
+  const libs = new Set<string>();
+  const importRegex = /(?:import\s+.*?\s+from\s+['"]([^'"./][^'"]*?)['"]|require\s*\(\s*['"]([^'"./][^'"]*?)['"]\s*\))/g;
+  let match: RegExpExecArray | null;
+  while ((match = importRegex.exec(code)) !== null) {
+    const pkg = match[1] || match[2];
+    if (pkg) {
+      const base = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0];
+      libs.add(base);
+    }
+  }
+  return [...libs];
+}
+
+export async function handleSecureCode(input: SecureCodeInput) {
   const scanResult = scanCode(input.code, {
     language: input.language,
     context: input.context,
@@ -30,7 +51,6 @@ export function handleSecureCode(input: SecureCodeInput) {
 
   const fixResult = applySecureFixes(input.code, scanResult.vulnerabilities);
 
-  // Post-Fix 재스캔: 수정 후 남은 취약점 확인
   const postScan = scanCode(fixResult.fixedCode, {
     language: input.language,
     context: input.context,
@@ -39,18 +59,25 @@ export function handleSecureCode(input: SecureCodeInput) {
   const resolved = scanResult.summary.totalIssues - postScan.summary.totalIssues;
   const remaining = postScan.summary.totalIssues;
 
+  const detectedLibs = detectLibraries(input.code);
+  const cveFindings = runCveCheck(input.code, detectedLibs);
+
   const total = scanResult.summary.totalIssues;
   const fixed = fixResult.appliedFixes.length;
   const manual = fixResult.manualFixes.length;
   const headers = fixResult.injectedHeaders.length;
   const imports = fixResult.addedImports?.length ?? 0;
+  const cveCount = cveFindings.length;
 
-  if (total === 0 && headers === 0) {
+  if (total === 0 && headers === 0 && cveCount === 0) {
     return { content: [{ type: 'text' as const, text: '✅ 취약점 없음. 코드가 안전합니다.' }] };
   }
 
   const patches: string[] = [];
   patches.push(`취약점 ${total}개 발견, 자동수정 ${fixed}개, 수동확인 ${manual}개, 보안헤더 ${headers}개, import ${imports}개 추가`);
+  if (cveCount > 0) {
+    patches.push(`🔍 CVE 패턴 ${cveCount}개 감지 (${detectedLibs.join(', ')} 라이브러리 자동 검사)`);
+  }
   if (resolved > 0) {
     patches.push(`🔒 재스캔 검증: ${resolved}개 해결됨, ${remaining}개 수동 확인 필요`);
   }
@@ -123,7 +150,69 @@ export function handleSecureCode(input: SecureCodeInput) {
     }
   }
 
+  if (cveFindings.length > 0) {
+    patches.push('---');
+    patches.push('');
+    patches.push('# CVE 취약점 패턴 자동 검사 결과');
+    patches.push('');
+    if (detectedLibs.length > 0) {
+      patches.push(`감지된 라이브러리: ${detectedLibs.map((l) => '`' + l + '`').join(', ')}`);
+      patches.push('');
+    }
+    for (const finding of cveFindings) {
+      patches.push(`## ⚠️ ${finding.cveId} (${finding.pattern.packageName})`);
+      patches.push('');
+      patches.push(`- **위험:** ${finding.pattern.descriptionKo}`);
+      patches.push(`- **라인 ${finding.line}:** \`${finding.matchedCode}\``);
+      patches.push(`- **수정 방안:** ${finding.pattern.codeRemediationKo}`);
+      patches.push('');
+      patches.push('**안전한 코드 예시:**');
+      patches.push('```');
+      patches.push(finding.pattern.safeAlternative);
+      patches.push('```');
+
+      const ps = getKnowledgeByCwe(finding.pattern.cweId);
+      if (ps) {
+        patches.push('');
+        patches.push(`**방어 기법 (PortSwigger):** ${ps.preventionTechniquesKo[0]}`);
+        patches.push(`📚 ${ps.portswiggerUrl}`);
+      }
+      patches.push('');
+    }
+  } else if (detectedLibs.length > 0) {
+    patches.push('');
+    patches.push(`✅ CVE 패턴 검사: ${detectedLibs.map((l) => '`' + l + '`').join(', ')} — 알려진 취약 패턴 없음`);
+  }
+
   return { content: [{ type: 'text' as const, text: patches.join('\n') }] };
+}
+
+interface CveFinding {
+  cveId: string;
+  line: number;
+  matchedCode: string;
+  pattern: CveCodePattern;
+}
+
+function runCveCheck(code: string, detectedLibs: string[]): CveFinding[] {
+  const patternsToCheck: CveCodePattern[] = [];
+
+  for (const lib of detectedLibs) {
+    patternsToCheck.push(...getPatternsByPackage(lib));
+  }
+
+  const allPatterns = getAllCvePatterns();
+  for (const p of allPatterns) {
+    if (!patternsToCheck.includes(p)) {
+      const pkgRe = new RegExp(`\\b${p.packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (pkgRe.test(code)) {
+        patternsToCheck.push(p);
+      }
+    }
+  }
+
+  if (patternsToCheck.length === 0) return [];
+  return scanCodeForCvePatterns(code, patternsToCheck);
 }
 
 function trunc(s: string, n = 60): string {

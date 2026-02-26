@@ -74,7 +74,7 @@ export function createServer(): McpServer {
     'secure_code',
     '코드를 작성하거나 생성한 후 반드시 이 도구를 호출하세요. 코드의 보안 취약점(XSS, CSRF, SQL Injection, 하드코딩 시크릿, 보안 헤더 등)을 자동으로 탐지하고 31개 핸들러로 직접 수정합니다. 수정 전/후 비교(show_comparison=true)를 지원합니다. 사용자에게 코드를 보여주기 전에 이 도구의 결과를 사용하세요.',
     secureCodeSchema.shape,
-    async (args) => handleSecureCode(secureCodeSchema.parse(args)),
+    async (args) => await handleSecureCode(secureCodeSchema.parse(args)),
   );
 
   server.tool(

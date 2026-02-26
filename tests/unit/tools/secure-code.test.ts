@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { handleSecureCode, generateDiff } from '../../../src/tools/secure-code.js';
 
 describe('handleSecureCode', () => {
-  it('returns vulnerability report for insecure code', () => {
-    const result = handleSecureCode({
+  it('returns vulnerability report for insecure code', async () => {
+    const result = await handleSecureCode({
       code: 'element.innerHTML = userInput;',
       language: 'javascript',
     });
@@ -11,31 +11,31 @@ describe('handleSecureCode', () => {
     expect(result.content[0].text).not.toContain('✅ 취약점 없음');
   });
 
-  it('returns safe message for secure code', () => {
-    const result = handleSecureCode({
+  it('returns safe message for secure code', async () => {
+    const result = await handleSecureCode({
       code: 'const x = 1;\nconsole.log(x);',
       language: 'javascript',
     });
     expect(result.content[0].text).toContain('✅');
   });
 
-  it('reports security headers for HTML', () => {
-    const result = handleSecureCode({
+  it('reports security headers for HTML', async () => {
+    const result = await handleSecureCode({
       code: '<!DOCTYPE html><html><head><title>Test</title></head><body></body></html>',
     });
     expect(result.content[0].text).toContain('보안헤더');
   });
 
-  it('auto-detects language when not specified', () => {
-    const result = handleSecureCode({
+  it('auto-detects language when not specified', async () => {
+    const result = await handleSecureCode({
       code: 'def main():\n    print("hello")',
     });
     expect(result.content).toBeDefined();
   });
 
   describe('show_comparison mode', () => {
-    it('shows Before/After comparison for insecure JS code', () => {
-      const result = handleSecureCode({
+    it('shows Before/After comparison for insecure JS code', async () => {
+      const result = await handleSecureCode({
         code: 'element.innerHTML = userInput;',
         language: 'javascript',
         show_comparison: true,
@@ -48,8 +48,8 @@ describe('handleSecureCode', () => {
       expect(text).toContain('textContent');
     });
 
-    it('shows severity summary table in comparison', () => {
-      const result = handleSecureCode({
+    it('shows severity summary table in comparison', async () => {
+      const result = await handleSecureCode({
         code: 'element.innerHTML = userInput;',
         language: 'javascript',
         show_comparison: true,
@@ -59,8 +59,8 @@ describe('handleSecureCode', () => {
       expect(text).toContain('건수');
     });
 
-    it('shows auto-fix detail table in comparison', () => {
-      const result = handleSecureCode({
+    it('shows auto-fix detail table in comparison', async () => {
+      const result = await handleSecureCode({
         code: 'element.innerHTML = userInput;',
         language: 'javascript',
         show_comparison: true,
@@ -70,15 +70,15 @@ describe('handleSecureCode', () => {
       expect(text).toContain('규칙');
     });
 
-    it('shows security headers in HTML comparison', () => {
+    it('shows security headers in HTML comparison', async () => {
       const code = '<!DOCTYPE html><html><head><title>T</title></head><body><a href="x" target="_blank">link</a></body></html>';
-      const result = handleSecureCode({ code, show_comparison: true });
+      const result = await handleSecureCode({ code, show_comparison: true });
       const text = result.content[0].text;
       expect(text).toContain('추가된 보안 헤더');
     });
 
-    it('includes full secured code block in comparison', () => {
-      const result = handleSecureCode({
+    it('includes full secured code block in comparison', async () => {
+      const result = await handleSecureCode({
         code: 'element.innerHTML = userInput;\nconsole.log("ok");',
         language: 'javascript',
         show_comparison: true,
@@ -88,8 +88,8 @@ describe('handleSecureCode', () => {
       expect(text).toContain('textContent');
     });
 
-    it('still returns safe message when no vulnerabilities with show_comparison', () => {
-      const result = handleSecureCode({
+    it('still returns safe message when no vulnerabilities with show_comparison', async () => {
+      const result = await handleSecureCode({
         code: 'const x = 1;\nconsole.log(x);',
         language: 'javascript',
         show_comparison: true,
@@ -97,14 +97,68 @@ describe('handleSecureCode', () => {
       expect(result.content[0].text).toContain('✅');
     });
 
-    it('defaults show_comparison to false', () => {
-      const result = handleSecureCode({
+    it('defaults show_comparison to false', async () => {
+      const result = await handleSecureCode({
         code: 'element.innerHTML = userInput;',
         language: 'javascript',
       });
       const text = result.content[0].text;
       expect(text).not.toContain('Before (취약)');
       expect(text).toContain('코드 수정');
+    });
+  });
+
+  describe('CVE auto-detection', () => {
+    it('detects CVE patterns from imported libraries', async () => {
+      const code = `
+import _ from 'lodash';
+const result = _.template(req.body.input);
+`;
+      const result = await handleSecureCode({ code, language: 'javascript' });
+      const text = result.content[0].text;
+      expect(text).toContain('CVE');
+      expect(text).toContain('lodash');
+    });
+
+    it('detects CVE patterns from require statements', async () => {
+      const code = `
+const _ = require('lodash');
+_.merge(config, req.body.data);
+`;
+      const result = await handleSecureCode({ code, language: 'javascript' });
+      const text = result.content[0].text;
+      expect(text).toContain('CVE');
+    });
+
+    it('reports clean when no CVE patterns found', async () => {
+      const code = `
+import express from 'express';
+const app = express();
+app.get('/', (req, res) => res.send('ok'));
+`;
+      const result = await handleSecureCode({ code, language: 'javascript' });
+      const text = result.content[0].text;
+      expect(text).toContain('express');
+    });
+
+    it('includes remediation guidance for CVE findings', async () => {
+      const code = `
+const lodash = require('lodash');
+lodash.template(req.body.template);
+`;
+      const result = await handleSecureCode({ code, language: 'javascript' });
+      const text = result.content[0].text;
+      expect(text).toContain('수정 방안');
+    });
+
+    it('detects library usage even without explicit import', async () => {
+      const code = `
+const _ = require('lodash');
+_.defaultsDeep(target, req.body.data);
+`;
+      const result = await handleSecureCode({ code, language: 'javascript' });
+      const text = result.content[0].text;
+      expect(text).toContain('CVE');
     });
   });
 });
