@@ -2,16 +2,11 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { z } from 'zod';
 
 import { secureCodeSchema, handleSecureCode } from './tools/secure-code.js';
-import { scanCodeSchema, handleScanCode } from './tools/scan-code.js';
-import { scanFileSchema, handleScanFile } from './tools/scan-file.js';
 import { checkDependencySchema, handleCheckDependency } from './tools/check-dependency.js';
-import { reviewCodeSchema, handleReviewCode } from './tools/review-code.js';
-import { createWebSchema, handleCreateWeb } from './tools/create-web.js';
 import { secureDevelopSchema, handleSecureDevelop } from './tools/secure-develop.js';
 import { generateSecureSchema, handleGenerateSecure } from './tools/generate-secure.js';
 import { auditConfigSchema, handleAuditConfig } from './tools/audit-config.js';
 import { explainVulnSchema, handleExplainVuln } from './tools/explain-vuln.js';
-import { searchCveSchema, handleSearchCve } from './tools/search-cve.js';
 
 import { getCweResource } from './resources/cwe-database.js';
 import { getOwaspResource } from './resources/owasp-top10.js';
@@ -31,7 +26,7 @@ export function createServer(): McpServer {
         '## 핵심 규칙',
         '이 서버가 연결되어 있으면, 코드 관련 요청에 반드시 아래 워크플로우를 따르세요.',
         '',
-        '## 코드 생성 워크플로우 (6단계)',
+        '## 코드 생성 워크플로우 (5단계)',
         '',
         '코드 생성 요청 시 (만들어줘, 구현해줘, 작성해줘 등):',
         '',
@@ -39,10 +34,9 @@ export function createServer(): McpServer {
         '   - 로그인, 회원가입, 게시판, 파일업로드, 검색, API, 댓글 등의 최적 보안 설계가 포함되어 있습니다.',
         '   - 블루프린트의 필수 보안 요구사항과 아키텍처를 반드시 반영하여 코드를 작성하세요.',
         '2. **위협 분석**: secure_develop 호출 → 보안 위협 + 체크리스트',
-        '3. **CVE 검색**: search_cve 호출 → 주요 라이브러리 CVE 사전 조회',
-        '4. **코드 작성**: 블루프린트 + 위협 분석 + CVE 결과를 반영하여 코드 작성',
-        '5. **보안 검증**: secure_code 호출 → 자동 탐지 + 자동 수정 + CVE 패턴 검사',
-        '6. **의존성 검사**: check_dependency 호출 → 의존성 CVE 검사',
+        '3. **코드 작성**: 블루프린트 + 위협 분석 결과를 반영하여 코드 작성',
+        '4. **보안 검증**: secure_code 호출 → 자동 탐지 + 자동 수정 + CVE 패턴 검사',
+        '5. **의존성 검사**: check_dependency 호출 → 의존성 CVE 검사',
         '',
         'secure_code가 반환한 수정된 코드를 사용자에게 제공하세요.',
         '',
@@ -53,7 +47,6 @@ export function createServer(): McpServer {
         '- security://cwe-database → CWE 취약점 데이터베이스',
         '',
         '## 기타 요청',
-        '- 코드 리뷰 → scan_code 또는 review_code',
         '- 취약점 질문 → explain_vulnerability',
         '- 설정 파일 감사 → audit_config',
         '',
@@ -75,38 +68,10 @@ export function createServer(): McpServer {
   );
 
   server.tool(
-    'scan_code',
-    '코드 스니펫의 보안 취약점을 정적 분석합니다. OWASP Top 10 기반 룰 매칭.',
-    scanCodeSchema.shape,
-    async (args) => handleScanCode(scanCodeSchema.parse(args)),
-  );
-
-  server.tool(
-    'scan_file',
-    '파일 경로를 받아 보안 취약점을 스캔합니다.',
-    scanFileSchema.shape,
-    async (args) => handleScanFile(scanFileSchema.parse(args)),
-  );
-
-  server.tool(
     'check_dependency',
     'package.json이나 requirements.txt의 의존성 취약점을 OSV.dev + NVD 실시간 CVE DB로 검사합니다. CVSS 점수, CWE 분류, 코드 수정 방안을 통합 제공합니다.',
     checkDependencySchema.shape,
     async (args) => await handleCheckDependency(checkDependencySchema.parse(args)),
-  );
-
-  server.tool(
-    'review_code',
-    '코드 또는 설정 파일을 보안 관점에서 리뷰합니다. 코드이면 스캔, 설정이면 감사를 수행합니다.',
-    reviewCodeSchema.shape,
-    async (args) => handleReviewCode(reviewCodeSchema.parse(args)),
-  );
-
-  server.tool(
-    'create_web',
-    '시큐어코딩이 적용된 웹 페이지/기능을 생성합니다. 보안 가이드 + 시큐어 코드 템플릿.',
-    createWebSchema.shape,
-    async (args) => handleCreateWeb(createWebSchema.parse(args)),
   );
 
   server.tool(
@@ -135,13 +100,6 @@ export function createServer(): McpServer {
     '특정 취약점(CWE/룰 ID)에 대한 상세 설명, 공격 시나리오, PortSwigger 전문가 방어 기법을 제공합니다.',
     explainVulnSchema.shape,
     async (args) => handleExplainVuln(explainVulnSchema.parse(args)),
-  );
-
-  server.tool(
-    'search_cve',
-    'CVE ID, GHSA ID, 또는 패키지명으로 최신 보안 취약점을 실시간 검색합니다. NVD에서 CVSS 점수를 조회하고, PortSwigger 전문가 방어 기법과 코드 수정 방안을 함께 제공합니다.',
-    searchCveSchema.shape,
-    async (args) => await handleSearchCve(searchCveSchema.parse(args)),
   );
 
   // ─── Resources ───

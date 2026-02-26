@@ -28,10 +28,16 @@ describe('detectLanguageFromExtension', () => {
     expect(detectLanguageFromExtension('Main.java')).toBe('java');
   });
 
+  it('detects new languages', () => {
+    expect(detectLanguageFromExtension('file.rb')).toBe('ruby');
+    expect(detectLanguageFromExtension('file.go')).toBe('go');
+    expect(detectLanguageFromExtension('file.php')).toBe('php');
+    expect(detectLanguageFromExtension('file.cs')).toBe('csharp');
+  });
+
   it('returns unknown for unsupported extensions', () => {
-    expect(detectLanguageFromExtension('file.rb')).toBe('unknown');
-    expect(detectLanguageFromExtension('file.go')).toBe('unknown');
     expect(detectLanguageFromExtension('file')).toBe('unknown');
+    expect(detectLanguageFromExtension('file.xyz')).toBe('unknown');
   });
 });
 

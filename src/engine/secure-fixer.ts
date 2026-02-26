@@ -1,4 +1,5 @@
-import type { Vulnerability, Severity } from '../types/index.js';
+import type { Vulnerability, Severity, Language } from '../types/index.js';
+import { detectLanguageFromCode } from '../utils/language-detector.js';
 
 export interface AppliedFix {
   line: number;
@@ -158,6 +159,151 @@ interface AutoFixResult {
 }
 
 type FixHandler = (code: string, vuln: Vulnerability) => AutoFixResult | null;
+
+// ─── 다국어 문법 매핑 유틸리티 ───
+
+function getLang(code: string): Language {
+  return detectLanguageFromCode(code);
+}
+
+function getEnvSyntax(lang: Language, key: string): string {
+  switch (lang) {
+    case 'python': return `os.environ.get('${key}')`;
+    case 'php': return `getenv('${key}')`;
+    case 'java': return `System.getenv("${key}")`;
+    case 'go': return `os.Getenv("${key}")`;
+    case 'ruby': return `ENV['${key}']`;
+    case 'csharp': return `Environment.GetEnvironmentVariable("${key}")`;
+    default: return `process.env.${key}`;
+  }
+}
+
+function getEnvImport(lang: Language): string | null {
+  switch (lang) {
+    case 'python': return 'import os';
+    case 'go': return '"os"';
+    case 'csharp': return 'using System;';
+    default: return null;
+  }
+}
+
+function getSecureRandom(lang: Language, varName: string): { code: string; imports: string[] } {
+  switch (lang) {
+    case 'python': return { code: `${varName} = secrets.token_hex(32)`, imports: ['import secrets'] };
+    case 'php': return { code: `$${varName} = bin2hex(random_bytes(32));`, imports: [] };
+    case 'java': return { code: `String ${varName} = new java.security.SecureRandom().nextLong() + "";`, imports: ['import java.security.SecureRandom;'] };
+    case 'go': return { code: `${varName} := make([]byte, 32)\nrand.Read(${varName})`, imports: ['"crypto/rand"'] };
+    case 'ruby': return { code: `${varName} = SecureRandom.hex(32)`, imports: ["require 'securerandom'"] };
+    case 'csharp': return { code: `var ${varName} = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32));`, imports: ['using System.Security.Cryptography;'] };
+    default: return { code: `const ${varName} = crypto.randomBytes(32).toString('hex');`, imports: ["import crypto from 'crypto';"] };
+  }
+}
+
+function getHashFix(lang: Language, algorithm: string): { replacement: string; imports: string[] } {
+  const alg = algorithm.toLowerCase().includes('md5') || algorithm.toLowerCase().includes('sha1') ? 'sha256' : algorithm;
+  switch (lang) {
+    case 'python': return { replacement: `hashlib.sha256`, imports: ['import hashlib'] };
+    case 'php': return { replacement: `hash('sha256',`, imports: [] };
+    case 'java': return { replacement: `MessageDigest.getInstance("SHA-256")`, imports: ['import java.security.MessageDigest;'] };
+    case 'go': return { replacement: `sha256.New()`, imports: ['"crypto/sha256"'] };
+    case 'ruby': return { replacement: `Digest::SHA256.hexdigest`, imports: ["require 'digest'"] };
+    case 'csharp': return { replacement: `SHA256.HashData`, imports: ['using System.Security.Cryptography;'] };
+    default: return { replacement: `crypto.createHash('${alg}')`, imports: [] };
+  }
+}
+
+function getBcryptFix(lang: Language): { code: string; imports: string[] } {
+  switch (lang) {
+    case 'python': return { code: `bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12))`, imports: ['import bcrypt'] };
+    case 'php': return { code: `password_hash($password, PASSWORD_BCRYPT, ['cost' => 12])`, imports: [] };
+    case 'java': return { code: `BCrypt.hashpw(password, BCrypt.gensalt(12))`, imports: ['import org.mindrot.jbcrypt.BCrypt;'] };
+    case 'go': return { code: `bcrypt.GenerateFromPassword([]byte(password), 12)`, imports: ['"golang.org/x/crypto/bcrypt"'] };
+    case 'ruby': return { code: `BCrypt::Password.create(password, cost: 12)`, imports: ["require 'bcrypt'"] };
+    case 'csharp': return { code: `BCrypt.Net.BCrypt.HashPassword(password, 12)`, imports: ['using BCrypt.Net;'] };
+    default: return { code: `await bcrypt.hash(password, 12)`, imports: ["import bcrypt from 'bcrypt';"] };
+  }
+}
+
+function getParamQueryFix(lang: Language, table: string, param: string): string {
+  switch (lang) {
+    case 'python': return `cursor.execute("SELECT * FROM ${table} WHERE id = %s", (${param},))`;
+    case 'php': return `$stmt = $pdo->prepare("SELECT * FROM ${table} WHERE id = ?"); $stmt->execute([${param}]);`;
+    case 'java': return `PreparedStatement ps = conn.prepareStatement("SELECT * FROM ${table} WHERE id = ?"); ps.setString(1, ${param});`;
+    case 'go': return `db.Query("SELECT * FROM ${table} WHERE id = $1", ${param})`;
+    case 'ruby': return `${table.charAt(0).toUpperCase() + table.slice(1)}.where(id: ${param})`;
+    case 'csharp': return `command.CommandText = "SELECT * FROM ${table} WHERE id = @id"; command.Parameters.AddWithValue("@id", ${param});`;
+    default: return `db.query('SELECT * FROM ${table} WHERE id = $1', [${param}])`;
+  }
+}
+
+function getCsrfGuide(lang: Language): { code: string; imports: string[] } {
+  switch (lang) {
+    case 'python': return { code: `csrf = CSRFProtect(app)`, imports: ['from flask_wtf.csrf import CSRFProtect'] };
+    case 'php': return { code: `$token = bin2hex(random_bytes(32)); $_SESSION['csrf_token'] = $token;`, imports: [] };
+    case 'java': return { code: `// Spring Security CSRF is enabled by default`, imports: [] };
+    case 'go': return { code: `csrf.Protect([]byte(os.Getenv("CSRF_KEY")))`, imports: ['"github.com/gorilla/csrf"'] };
+    case 'ruby': return { code: `protect_from_forgery with: :exception`, imports: [] };
+    case 'csharp': return { code: `[ValidateAntiForgeryToken]`, imports: [] };
+    default: return { code: `app.use(csrfProtection);`, imports: ["import csrf from 'csurf'; const csrfProtection = csrf({ cookie: true });"] };
+  }
+}
+
+function getJwtVerify(lang: Language, tokenVar: string): { code: string; imports: string[] } {
+  switch (lang) {
+    case 'python': return { code: `jwt.decode(${tokenVar}, os.environ.get('JWT_SECRET'), algorithms=['HS256'])`, imports: ['import jwt', 'import os'] };
+    case 'php': return { code: `Firebase\\JWT\\JWT::decode(${tokenVar}, new Key(getenv('JWT_SECRET'), 'HS256'))`, imports: ["use Firebase\\JWT\\JWT;", "use Firebase\\JWT\\Key;"] };
+    case 'java': return { code: `Jwts.parserBuilder().setSigningKey(System.getenv("JWT_SECRET")).build().parseClaimsJws(${tokenVar})`, imports: ['import io.jsonwebtoken.Jwts;'] };
+    case 'go': return { code: `jwt.Parse(${tokenVar}, func(t *jwt.Token) (interface{}, error) { return []byte(os.Getenv("JWT_SECRET")), nil })`, imports: ['"github.com/golang-jwt/jwt/v5"'] };
+    case 'ruby': return { code: `JWT.decode(${tokenVar}, ENV['JWT_SECRET'], true, algorithm: 'HS256')`, imports: ["require 'jwt'"] };
+    case 'csharp': return { code: `new JwtSecurityTokenHandler().ValidateToken(${tokenVar}, validationParameters, out _)`, imports: ['using System.IdentityModel.Tokens.Jwt;'] };
+    default: return { code: `jwt.verify(${tokenVar}, process.env.JWT_SECRET, { algorithms: ['HS256'] })`, imports: [] };
+  }
+}
+
+function getSafeExec(lang: Language): string {
+  switch (lang) {
+    case 'python': return 'subprocess.run([cmd, arg], shell=False, check=True)';
+    case 'php': return 'escapeshellarg($arg)';
+    case 'java': return 'new ProcessBuilder(cmd, arg).start()';
+    case 'go': return 'exec.Command(cmd, arg).Output()';
+    case 'ruby': return 'system(cmd, arg)';
+    case 'csharp': return 'Process.Start(new ProcessStartInfo(cmd, arg) { UseShellExecute = false })';
+    default: return "execFile(cmd, [arg])";
+  }
+}
+
+function getInMemoryDbFix(lang: Language, varName: string): { code: string; imports: string[] } {
+  switch (lang) {
+    case 'python': return {
+      code: `# [보안] 인메모리 저장소 → SQLite DB로 교체\nimport sqlite3\ndb = sqlite3.connect('app.db')\ndb.execute('CREATE TABLE IF NOT EXISTS ${varName} (id INTEGER PRIMARY KEY, data TEXT)')`,
+      imports: ['import sqlite3'],
+    };
+    case 'php': return {
+      code: `// [보안] 인메모리 저장소 → PDO DB로 교체\n$db = new PDO('sqlite:app.db');\n$db->exec('CREATE TABLE IF NOT EXISTS ${varName} (id INTEGER PRIMARY KEY, data TEXT)');`,
+      imports: [],
+    };
+    case 'java': return {
+      code: `// [보안] 인메모리 저장소 → JDBC DB로 교체\nConnection db = DriverManager.getConnection("jdbc:sqlite:app.db");\ndb.createStatement().execute("CREATE TABLE IF NOT EXISTS ${varName} (id INT PRIMARY KEY, data TEXT)");`,
+      imports: ['import java.sql.*;'],
+    };
+    case 'go': return {
+      code: `// [보안] 인메모리 저장소 → SQLite DB로 교체\ndb, _ := sql.Open("sqlite3", "app.db")\ndb.Exec("CREATE TABLE IF NOT EXISTS ${varName} (id INTEGER PRIMARY KEY, data TEXT)")`,
+      imports: ['"database/sql"', '_ "github.com/mattn/go-sqlite3"'],
+    };
+    case 'ruby': return {
+      code: `# [보안] 인메모리 저장소 → SQLite DB로 교체\nrequire 'sqlite3'\ndb = SQLite3::Database.new('app.db')\ndb.execute('CREATE TABLE IF NOT EXISTS ${varName} (id INTEGER PRIMARY KEY, data TEXT)')`,
+      imports: ["require 'sqlite3'"],
+    };
+    case 'csharp': return {
+      code: `// [보안] 인메모리 저장소 → SQLite DB로 교체\nusing var db = new SqliteConnection("Data Source=app.db");\ndb.Open();\nnew SqliteCommand("CREATE TABLE IF NOT EXISTS ${varName} (id INTEGER PRIMARY KEY, data TEXT)", db).ExecuteNonQuery();`,
+      imports: ['using Microsoft.Data.Sqlite;'],
+    };
+    default: return {
+      code: `// [보안] 인메모리 저장소 → DB로 교체 필요\n// const ${varName} = {}; // 서버 재시작 시 데이터 소실\nimport Database from 'better-sqlite3';\nconst db = new Database('app.db');\ndb.exec('CREATE TABLE IF NOT EXISTS ${varName} (id INTEGER PRIMARY KEY, data TEXT)');`,
+      imports: ["import Database from 'better-sqlite3';"],
+    };
+  }
+}
 
 // ─── Import 자동 주입 ───
 
@@ -456,22 +602,59 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
     const { lines, lineIdx, line } = ctx;
 
     const before = line.trim();
-    const secretMatch = line.match(/((?:password|passwd|pwd|secret|apiKey|api_key|apiSecret|api_secret|accessToken|access_token|privateKey|private_key|JWT.SECRET|DB.PASSWORD|DATABASE.PASSWORD|PRIVATE.KEY|SECRET.KEY)\s*[:=]\s*)['"]([^'"]+)['"]/i);
+    const secretMatch = line.match(/((?:password|passwd|pwd|secret|apiKey|api_key|apiSecret|api_secret|accessToken|access_token|privateKey|private_key|JWT.SECRET|DB.PASSWORD|DATABASE.PASSWORD|PRIVATE.KEY|SECRET.KEY)\s*[:=]{1,2}\s*)['"]([^'"]+)['"]/i);
     if (!secretMatch) return null;
 
-    const varName = secretMatch[1].replace(/\s*[:=]\s*$/, '').trim();
+    const lang = getLang(code);
+    const varName = secretMatch[1].replace(/\s*[:=]{1,2}\s*$/, '').trim();
     const envKey = varName.replace(/([a-z])([A-Z])/g, '$1_$2').replace(/[.\s-]/g, '_').toUpperCase();
-    lines[lineIdx] = line.replace(/['"][^'"]{4,}['"]/, `process.env.${envKey}`);
-    return buildResult(lines, lineIdx, before, `하드코딩된 시크릿 → process.env.${envKey} 환경변수 전환`);
+    const envExpr = getEnvSyntax(lang, envKey);
+    lines[lineIdx] = line.replace(/['"][^'"]{4,}['"]/, envExpr);
+    const envImp = getEnvImport(lang);
+    const imports = envImp ? [envImp] : undefined;
+    return { ...buildResult(lines, lineIdx, before, `하드코딩된 시크릿 → ${envExpr} 환경변수 전환`), imports };
   },
 
   'SCG-AUF-COOKIE-001': (code, vuln) => {
     const ctx = getLine(code, vuln);
     if (!ctx) return null;
     const { lines, lineIdx, line } = ctx;
-
     const before = line.trim();
-    // res.cookie('name', val) → res.cookie('name', val, { httpOnly: true, secure: true, sameSite: 'strict' })
+    const lang = getLang(code);
+
+    // --- Python/Flask 세션 쿠키 ---
+    if (/SESSION_COOKIE_SECURE.*?=\s*False/i.test(line)) {
+      lines[lineIdx] = line.replace(/=\s*False/i, '= True');
+      return buildResult(lines, lineIdx, before, 'SESSION_COOKIE_SECURE = False → True');
+    }
+    if (/SESSION_COOKIE_HTTPONLY.*?=\s*False/i.test(line)) {
+      lines[lineIdx] = line.replace(/=\s*False/i, '= True');
+      return buildResult(lines, lineIdx, before, 'SESSION_COOKIE_HTTPONLY = False → True');
+    }
+    if (/SESSION_COOKIE_SAMESITE.*?=\s*None/i.test(line) || /SESSION_COOKIE_SAMESITE.*?=\s*['"]{2}/i.test(line)) {
+      lines[lineIdx] = line.replace(/=\s*(?:None|['"]{2})/, "= 'Lax'");
+      return buildResult(lines, lineIdx, before, "SESSION_COOKIE_SAMESITE → 'Lax' 설정");
+    }
+    if (/session\.cookie_secure\s*=\s*(?:false|0|off)/i.test(line) || /cookie_secure\s*=\s*(?:False|false|0)/i.test(line)) {
+      lines[lineIdx] = line.replace(/(?:false|False|0|off)/i, lang === 'php' ? '1' : 'True');
+      return buildResult(lines, lineIdx, before, 'session cookie secure → true 변경');
+    }
+    if (/cookie_httponly\s*=\s*(?:False|false|0|off)/i.test(line)) {
+      lines[lineIdx] = line.replace(/(?:false|False|0|off)/i, lang === 'php' ? '1' : 'True');
+      return buildResult(lines, lineIdx, before, 'session cookie httponly → true 변경');
+    }
+
+    // --- PHP session settings ---
+    if (/session\.cookie_secure\s*,\s*(?:false|0)/i.test(line)) {
+      lines[lineIdx] = line.replace(/(?:false|0)/i, 'true');
+      return buildResult(lines, lineIdx, before, 'PHP session.cookie_secure → true');
+    }
+    if (/session\.cookie_httponly\s*,\s*(?:false|0)/i.test(line)) {
+      lines[lineIdx] = line.replace(/(?:false|0)/i, 'true');
+      return buildResult(lines, lineIdx, before, 'PHP session.cookie_httponly → true');
+    }
+
+    // --- JS/TS: res.cookie without any security flags ---
     if (/res\.cookie\s*\(/.test(line) && !/httpOnly\s*:\s*true/.test(line)) {
       if (/res\.cookie\s*\([^)]*\{/.test(line)) {
         lines[lineIdx] = line.replace(/(\{)/, "$1 httpOnly: true, secure: true, sameSite: 'strict',");
@@ -484,14 +667,28 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
       return buildResult(lines, lineIdx, before, '쿠키 보안 플래그 추가: httpOnly, secure, sameSite=strict');
     }
 
-    // cookie/session config with false flags
-    if (/httpOnly\s*:\s*false/.test(line)) {
-      lines[lineIdx] = line.replace(/httpOnly\s*:\s*false/, 'httpOnly: true');
-      return buildResult(lines, lineIdx, before, '쿠키 httpOnly: false → true 변경');
+    // --- JS/TS: fix false flags + ensure all 3 flags present ---
+    let modified = line;
+    const fixes: string[] = [];
+    if (/httpOnly\s*:\s*false/.test(modified)) {
+      modified = modified.replace(/httpOnly\s*:\s*false/, 'httpOnly: true');
+      fixes.push('httpOnly: false→true');
     }
-    if (/secure\s*:\s*false/.test(line)) {
-      lines[lineIdx] = line.replace(/secure\s*:\s*false/, 'secure: true');
-      return buildResult(lines, lineIdx, before, '쿠키 secure: false → true 변경');
+    if (/secure\s*:\s*false/.test(modified)) {
+      modified = modified.replace(/secure\s*:\s*false/, 'secure: true');
+      fixes.push('secure: false→true');
+    }
+    if (/httpOnly\s*:\s*true/.test(modified) && !/secure\s*:/.test(modified)) {
+      modified = modified.replace(/(httpOnly\s*:\s*true)/, "$1, secure: true");
+      fixes.push('secure: true 추가');
+    }
+    if (/(httpOnly|secure)\s*:\s*true/.test(modified) && !/sameSite\s*:/.test(modified)) {
+      modified = modified.replace(/(secure\s*:\s*true)/, "$1, sameSite: 'strict'");
+      fixes.push("sameSite: 'strict' 추가");
+    }
+    if (fixes.length > 0) {
+      lines[lineIdx] = modified;
+      return buildResult(lines, lineIdx, before, `쿠키 보안 플래그 수정: ${fixes.join(', ')}`);
     }
     return null;
   },
@@ -539,11 +736,16 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
     const ctx = getLine(code, vuln);
     if (!ctx) return null;
     const { lines, lineIdx, line } = ctx;
-
     const before = line.trim();
+    const lang = getLang(code);
 
-    // password context → bcrypt
     if (/(?:password|passwd|pwd)/i.test(line)) {
+      if (lang !== 'javascript' && lang !== 'typescript') {
+        const indent = line.match(/^(\s*)/)?.[1] ?? '';
+        const fix = getBcryptFix(lang);
+        lines[lineIdx] = `${indent}${fix.code}`;
+        return { ...buildResult(lines, lineIdx, before, `${lang} 비밀번호 해시 → bcrypt/argon2 변환`), imports: fix.imports };
+      }
       if (/createHash\s*\(\s*['"](?:md5|sha1)['"]\s*\)/.test(line)) {
         const indent = line.match(/^(\s*)/)?.[1] ?? '';
         const varMatch = line.match(/(?:const|let|var)\s+(\w+)/);
@@ -552,7 +754,6 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
         return { ...buildResult(lines, lineIdx, before, '취약한 해시(MD5/SHA1) → bcrypt 변환 (비밀번호 해싱)'), imports: ["import bcrypt from 'bcrypt';"] };
       }
     }
-    // general hash → sha256
     if (/createHash\s*\(\s*['"](?:md5|sha1)['"]\s*\)/.test(line)) {
       lines[lineIdx] = line.replace(/createHash\s*\(\s*['"](?:md5|sha1)['"]\s*\)/, "createHash('sha256')");
       return buildResult(lines, lineIdx, before, '취약한 해시(MD5/SHA1) → SHA-256 변환');
@@ -686,7 +887,17 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
     const { lines, lineIdx, line } = ctx;
 
     const before = line.trim();
-    // Math.random().toString(36) → crypto.randomBytes(32).toString('hex')
+    const lang = getLang(code);
+
+    if (lang !== 'javascript' && lang !== 'typescript') {
+      const varMatch = line.match(/(?:(?:const|let|var|my|local|\$)\s*)?(\$?\w+)\s*=/) ;
+      const varName = varMatch?.[1]?.replace(/^\$/, '') ?? 'secureToken';
+      const fix = getSecureRandom(lang, varName);
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines[lineIdx] = `${indent}${fix.code}`;
+      return { ...buildResult(lines, lineIdx, before, `안전하지 않은 난수 → ${lang} 보안 랜덤 함수 교체`), imports: fix.imports };
+    }
+
     if (/Math\.random\s*\(\s*\)\.toString\s*\(\s*36\s*\)/.test(line)) {
       lines[lineIdx] = line.replace(
         /Math\.random\s*\(\s*\)\.toString\s*\(\s*36\s*\)(?:\.(?:substring|slice|substr)\s*\([^)]*\))?/,
@@ -694,7 +905,6 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
       );
       return { ...buildResult(lines, lineIdx, before, 'Math.random().toString(36) → crypto.randomBytes() 변환 (안전한 난수)'), imports: ["import crypto from 'crypto';"] };
     }
-    // General Math.random() in security context
     if (/Math\.random\s*\(\s*\)/.test(line)) {
       lines[lineIdx] = line.replace(/Math\.random\s*\(\s*\)/, "parseInt(crypto.randomBytes(4).toString('hex'), 16) / 0xFFFFFFFF");
       return { ...buildResult(lines, lineIdx, before, 'Math.random() → crypto.randomBytes() 변환 (암호학적 난수)'), imports: ["import crypto from 'crypto';"] };
@@ -726,13 +936,15 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
     const { lines, lineIdx, line } = ctx;
 
     const before = line.trim();
+    const lang = getLang(code);
     const keyMatch = line.match(/((?:encryption[_.]?key|crypto[_.]?key|secret[_.]?key|aes[_.]?key)\s*[:=]\s*)['"][^'"]+['"]/i);
     if (keyMatch) {
       const envKey = keyMatch[1].replace(/\s*[:=]\s*$/, '').trim().replace(/([a-z])([A-Z])/g, '$1_$2').replace(/[.\s-]/g, '_').toUpperCase();
-      lines[lineIdx] = line.replace(/['"][^'"]{8,}['"]/, `process.env.${envKey}`);
-      return buildResult(lines, lineIdx, before, `하드코딩된 암호화 키 → process.env.${envKey} 환경변수 전환`);
+      const envExpr = getEnvSyntax(lang, envKey);
+      lines[lineIdx] = line.replace(/['"][^'"]{8,}['"]/, envExpr);
+      const envImp = getEnvImport(lang);
+      return { ...buildResult(lines, lineIdx, before, `하드코딩된 암호화 키 → ${envExpr} 환경변수 전환`), imports: envImp ? [envImp] : undefined };
     }
-    // Inline key in createCipher
     if (/createCipher(?:iv)?\s*\([^,]+,\s*['"][^'"]{8,}['"]/.test(line)) {
       lines[lineIdx] = line.replace(
         /(createCipher(?:iv)?\s*\([^,]+,\s*)['"][^'"]+['"]/,
@@ -747,15 +959,37 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
     const ctx = getLine(code, vuln);
     if (!ctx) return null;
     const { lines, lineIdx, line } = ctx;
-
     const before = line.trim();
+    const lang = getLang(code);
+
     if (/createHash\s*\(\s*['"](?:md5|sha1)['"]\s*\)/.test(line)) {
       lines[lineIdx] = line.replace(/createHash\s*\(\s*['"](?:md5|sha1)['"]\s*\)/, "createHash('sha256')");
-      return buildResult(lines, lineIdx, before, '취약한 해시(MD5/SHA1) → SHA-256 변환 (무결성 검증)');
+      return buildResult(lines, lineIdx, before, '취약한 해시(MD5/SHA1) → SHA-256 변환');
     }
     if (/hashlib\.(?:md5|sha1)\s*\(/.test(line)) {
       lines[lineIdx] = line.replace(/hashlib\.(?:md5|sha1)/, 'hashlib.sha256');
       return buildResult(lines, lineIdx, before, '취약한 해시(MD5/SHA1) → SHA-256 변환');
+    }
+    if (/\bmd5\s*\(/.test(line) && (lang === 'php')) {
+      lines[lineIdx] = line.replace(/\bmd5\s*\(/, "hash('sha256', ");
+      return buildResult(lines, lineIdx, before, 'PHP md5() → hash("sha256") 변환');
+    }
+    if (/MessageDigest\.getInstance\s*\(\s*['"](?:MD5|SHA-1)['"]\s*\)/.test(line)) {
+      lines[lineIdx] = line.replace(/['"](?:MD5|SHA-1)['"]/, '"SHA-256"');
+      return buildResult(lines, lineIdx, before, 'Java MD5/SHA-1 → SHA-256 변환');
+    }
+    if (/(?:md5|sha1)\.(?:New|Sum)\s*\(/.test(line) && lang === 'go') {
+      const fix = getHashFix('go', 'sha256');
+      lines[lineIdx] = line.replace(/(?:md5|sha1)\.(?:New|Sum)\s*\(/, `${fix.replacement}(`);
+      return { ...buildResult(lines, lineIdx, before, 'Go MD5/SHA1 → SHA-256 변환'), imports: fix.imports };
+    }
+    if (/Digest::(?:MD5|SHA1)/.test(line) && lang === 'ruby') {
+      lines[lineIdx] = line.replace(/Digest::(?:MD5|SHA1)/, 'Digest::SHA256');
+      return buildResult(lines, lineIdx, before, 'Ruby MD5/SHA1 → SHA-256 변환');
+    }
+    if (/MD5\.(?:Create|HashData)/.test(line) && lang === 'csharp') {
+      lines[lineIdx] = line.replace(/MD5\.(?:Create|HashData)/, 'SHA256.HashData');
+      return { ...buildResult(lines, lineIdx, before, 'C# MD5 → SHA-256 변환'), imports: ['using System.Security.Cryptography;'] };
     }
     return null;
   },
@@ -785,20 +1019,26 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
     const ctx = getLine(code, vuln);
     if (!ctx) return null;
     const { lines, lineIdx, line } = ctx;
-
     const before = line.trim();
-    // debug: true → debug: process.env.NODE_ENV !== 'production'
-    if (/(?:DEBUG|debug)\s*[:=]\s*(?:true|True|1|['"]true['"])/.test(line)) {
-      lines[lineIdx] = line.replace(
-        /(?:DEBUG|debug)\s*[:=]\s*(?:true|True|1|['"]true['"])/i,
-        "debug: process.env.NODE_ENV !== 'production'"
-      );
-      return buildResult(lines, lineIdx, before, "디버그 모드 → 환경변수 기반 조건부 활성화");
-    }
-    // app.debug = True (Python)
+    const lang = getLang(code);
+
     if (/app\.(?:debug|DEBUG)\s*=\s*True/.test(line)) {
       lines[lineIdx] = line.replace(/app\.(?:debug|DEBUG)\s*=\s*True/i, "app.debug = os.environ.get('FLASK_ENV') != 'production'");
-      return buildResult(lines, lineIdx, before, '디버그 모드 → 환경변수 기반 조건부 활성화');
+      return { ...buildResult(lines, lineIdx, before, '디버그 모드 → 환경변수 기반 조건부 활성화'), imports: ['import os'] };
+    }
+    if (/(?:DEBUG|debug)\s*[:=]\s*(?:true|True|1|['"]true['"])/.test(line)) {
+      const envCheck = lang === 'php' ? "getenv('APP_ENV') !== 'production'"
+        : lang === 'java' ? '!"production".equals(System.getenv("APP_ENV"))'
+        : lang === 'go' ? 'os.Getenv("APP_ENV") != "production"'
+        : lang === 'ruby' ? "ENV['RACK_ENV'] != 'production'"
+        : lang === 'csharp' ? 'Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") != "Production"'
+        : "process.env.NODE_ENV !== 'production'";
+      lines[lineIdx] = line.replace(
+        /(?:DEBUG|debug)\s*[:=]\s*(?:true|True|1|['"]true['"])/i,
+        `debug: ${envCheck}`
+      );
+      const envImp = getEnvImport(lang);
+      return { ...buildResult(lines, lineIdx, before, `디버그 모드 → ${lang} 환경변수 기반 조건부 활성화`), imports: envImp ? [envImp] : undefined };
     }
     return null;
   },
@@ -883,7 +1123,6 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
     const { lines, lineIdx, line } = ctx;
 
     const before = line.trim();
-    // Replace sensitive field references with masked versions
     const sensitiveFields = /\b(password|passwd|pwd|token|secret|credit.?card|ssn|social.?security)\b/gi;
     if (sensitiveFields.test(line) && /console\.log|logger\./i.test(line)) {
       lines[lineIdx] = line.replace(
@@ -896,6 +1135,416 @@ const FIX_HANDLERS: Record<string, FixHandler> = {
       return buildResult(lines, lineIdx, before, '로그 민감정보 마스킹: 비밀번호/토큰 등 [REDACTED] 처리');
     }
     return null;
+  },
+
+  // ═══════════════════════════════════════════════════
+  // NEW: XSS (jQuery, postMessage)
+  // ═══════════════════════════════════════════════════
+
+  'SCG-XSS-DOM-003': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/\$\s*\(.*?\)\.html\s*\(/.test(line)) {
+      lines[lineIdx] = line.replace(/\.html\s*\(/, '.text(');
+      return buildResult(lines, lineIdx, before, '$(el).html() → $(el).text() 변경 (XSS 방지)');
+    }
+    if (/\$\s*\(.*?\)\.append\s*\(/.test(line) && /\b(?:user|input|data|req|body|query)\b/i.test(line)) {
+      lines[lineIdx] = line.replace(/\.append\s*\((.+)\)/, '.append($("<span>").text($1))');
+      return buildResult(lines, lineIdx, before, '$.append(동적값) → text() 래핑 (XSS 방지)');
+    }
+    return null;
+  },
+
+  'SCG-XSS-POSTMSG-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    if (!/addEventListener\s*\(\s*['"]message['"]/.test(line)) return null;
+    const before = line.trim();
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const fnBodyStart = lineIdx + 1;
+    if (fnBodyStart < lines.length) {
+      const nextLine = lines[fnBodyStart];
+      if (!/origin/.test(nextLine)) {
+        lines.splice(fnBodyStart, 0, `${indent}  if (event.origin !== window.location.origin) return;`);
+        return buildResult(lines, lineIdx, before, 'postMessage 핸들러에 origin 검증 추가');
+      }
+    }
+    return null;
+  },
+
+  // ═══════════════════════════════════════════════════
+  // NEW: Injection (NoSQL, SSRF, SSTI, Deserialization)
+  // ═══════════════════════════════════════════════════
+
+  'SCG-INJ-NOS-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/\$(?:gt|lt|ne|in|regex|where|or|and)\b/.test(line) && /(?:req\.|body|query|params)/i.test(line)) {
+      lines[lineIdx] = line.replace(/((?:req\.(?:body|query|params))\.\w+)/g, 'mongo.sanitize($1)');
+      return { ...buildResult(lines, lineIdx, before, 'NoSQL 인젝션 방지: mongo.sanitize() 래핑'), imports: ["import mongoSanitize from 'express-mongo-sanitize';"] };
+    }
+    if (/\.find\s*\(/.test(line) && /(?:req\.|body|query)/i.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines.splice(lineIdx, 0, `${indent}// [보안] NoSQL 인젝션 방지: 객체 타입 입력을 문자열로 강제 변환`);
+      return buildResult(lines, lineIdx + 1, before, 'NoSQL 쿼리에 입력 검증 주석 가이드 추가');
+    }
+    return null;
+  },
+
+  'SCG-INJ-SSRF-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/(?:fetch|axios\.get|http\.get|request)\s*\(/.test(line) && /(?:req\.|body|query|params|user)/i.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines.splice(lineIdx, 0, `${indent}const __validatedUrl = new URL(${line.match(/(?:req\.(?:body|query|params)\.\w+)/)?.[0] ?? 'userUrl'}); if (['127.0.0.1','localhost','169.254.169.254','0.0.0.0'].includes(__validatedUrl.hostname) || /^(?:10\\.|172\\.(?:1[6-9]|2\\d|3[01])\\.|192\\.168\\.)/.test(__validatedUrl.hostname)) throw new Error('Blocked host');`);
+      return buildResult(lines, lineIdx, before, 'SSRF 방지: URL 검증 + 내부 IP/메타데이터 차단 추가');
+    }
+    return null;
+  },
+
+  'SCG-INJ-TMPL-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/render_template_string\s*\(/.test(line)) {
+      lines[lineIdx] = line.replace(/render_template_string\s*\((.+?)\)/, "render_template('template.html', data=$1)");
+      return buildResult(lines, lineIdx, before, 'render_template_string → render_template (SSTI 방지)');
+    }
+    if (/(?:ejs|Handlebars|pug)\.(?:compile|render)\s*\(/.test(line) && /(?:req\.|body|query)/i.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines[lineIdx] = `${indent}// [보안] SSTI 위험: 사용자 입력을 템플릿 소스로 사용 금지. 데이터 컨텍스트로 전달하세요.`;
+      lines.splice(lineIdx + 1, 0, `${indent}// 원본: ${before}`);
+      lines.splice(lineIdx + 2, 0, `${indent}res.render('fixed-template', { userInput: req.body.input });`);
+      return buildResult(lines, lineIdx, before, 'SSTI 방지: 사용자 입력을 템플릿 소스 대신 데이터 컨텍스트로 분리');
+    }
+    if (/nunjucks\.renderString\s*\(/.test(line)) {
+      lines[lineIdx] = line.replace(/nunjucks\.renderString\s*\((.+?),/, "nunjucks.render('template.html',");
+      return buildResult(lines, lineIdx, before, 'nunjucks.renderString → nunjucks.render (SSTI 방지)');
+    }
+    return null;
+  },
+
+  'SCG-INJ-DESER-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/JSON\.parse\s*\(/.test(line) && /(?:req\.|body|query|user)/i.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      const varMatch = line.match(/(const|let|var)\s+(\w+)\s*=/);
+      const varName = varMatch?.[2] ?? 'parsed';
+      lines[lineIdx] = `${indent}${varMatch?.[1] ?? 'const'} ${varName} = JSON.parse(${line.match(/JSON\.parse\s*\((.+?)\)/)?.[1] ?? 'input'});`;
+      lines.splice(lineIdx + 1, 0, `${indent}if (typeof ${varName} !== 'object' || ${varName} === null) throw new Error('Invalid input');`);
+      lines.splice(lineIdx + 2, 0, `${indent}delete ${varName}.__proto__; delete ${varName}.constructor;`);
+      return buildResult(lines, lineIdx, before, '역직렬화 보호: 타입 검증 + __proto__/constructor 제거');
+    }
+    if (/(?:unserialize|pickle\.loads|yaml\.load)\s*\(/.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines[lineIdx] = `${indent}// [보안] 위험: 안전하지 않은 역직렬화. 검증된 데이터만 사용하세요.`;
+      lines.splice(lineIdx + 1, 0, `${indent}// 원본: ${before}`);
+      return buildResult(lines, lineIdx, before, '안전하지 않은 역직렬화 함수 차단 + 경고');
+    }
+    return null;
+  },
+
+  // ═══════════════════════════════════════════════════
+  // NEW: Auth (API Key, JWT verify, CSRF, OAuth)
+  // ═══════════════════════════════════════════════════
+
+  'SCG-AUF-SECRET-002': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    const lang = getLang(code);
+    const keyMatch = line.match(/(['"])((?:sk|pk|api|key|token)[-_]?[a-zA-Z0-9]{16,})\1/i);
+    if (keyMatch) {
+      const varMatch = line.match(/(?:const|let|var)\s+(\w+)/);
+      const envName = varMatch ? varMatch[1].replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase() : 'API_KEY';
+      const envExpr = getEnvSyntax(lang, envName);
+      lines[lineIdx] = line.replace(keyMatch[0], envExpr);
+      const envImp = getEnvImport(lang);
+      return { ...buildResult(lines, lineIdx, before, `하드코딩 API 키 → ${envExpr} 교체`), imports: envImp ? [envImp] : undefined };
+    }
+    return null;
+  },
+
+  'SCG-AUF-JWT-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    const lang = getLang(code);
+    const tokenMatch = line.match(/jwt\.decode\s*\((.+?)\)/);
+    if (tokenMatch) {
+      const fix = getJwtVerify(lang, tokenMatch[1]);
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines[lineIdx] = `${indent}${fix.code}`;
+      return { ...buildResult(lines, lineIdx, before, `jwt.decode → ${lang} JWT verify + algorithm pinning`), imports: fix.imports };
+    }
+    return null;
+  },
+
+  'SCG-AUF-CSRF-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    if (!/app\.(?:post|put|delete|patch)\s*\(/.test(line) && !/\bRoute\b/.test(line) && !/\bdef\s+\w+/.test(line)) return null;
+    const before = line.trim();
+    const lang = getLang(code);
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const fix = getCsrfGuide(lang);
+    lines.splice(lineIdx, 0, `${indent}${fix.code}`);
+    return { ...buildResult(lines, lineIdx, before, `CSRF 보호 추가 (${lang})`), imports: fix.imports };
+  },
+
+  'SCG-AUF-CSRF-003': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const lang = getLang(code);
+
+    if (lang === 'python') {
+      // Flask: @app.route('/logout') → @app.route('/logout', methods=['POST'])
+      if (/\@app\.route\s*\(/.test(line) && !/methods/.test(line)) {
+        lines[lineIdx] = line.replace(/\)\s*$/, ", methods=['POST'])");
+        return buildResult(lines, lineIdx, before, 'GET /logout → POST /logout (CSRF 방지)');
+      }
+      return null;
+    }
+
+    // Express: app.get('/logout', ...) → app.post('/logout', ...)
+    if (/app\.get\s*\(/.test(line) || /router\.get\s*\(/.test(line)) {
+      lines[lineIdx] = line.replace(/\.(get)\s*\(/, '.post(');
+      const after = lines[lineIdx].trim();
+      // CSRF 토큰 검증 미들웨어 안내 주석 삽입
+      lines.splice(lineIdx, 0, `${indent}// [보안] 로그아웃은 반드시 POST + CSRF 토큰 검증 필요. csrfProtection 미들웨어를 추가하세요.`);
+      return {
+        ...buildResult(lines, lineIdx + 1, before, 'GET /logout → POST /logout (CSRF 방지)'),
+        imports: [],
+      };
+    }
+    return null;
+  },
+
+  'SCG-AUF-CSRF-002': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/csrf.*?=\s*['"](['"])/i.test(line) || /token.*?=\s*['"]{2}/i.test(line)) {
+      lines[lineIdx] = line.replace(/=\s*['"](['"])?/, "= crypto.randomBytes(32).toString('hex')");
+      return { ...buildResult(lines, lineIdx, before, '빈 CSRF 토큰 → crypto.randomBytes 생성'), imports: ["import crypto from 'crypto';"] };
+    }
+    return null;
+  },
+
+  'SCG-AUF-OAUTH-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    if (!/(?:callback|redirect|oauth)/i.test(line)) return null;
+    const before = line.trim();
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const fnBodyStart = lineIdx + 1;
+    if (fnBodyStart < lines.length && !/state/.test(lines[fnBodyStart])) {
+      lines.splice(fnBodyStart, 0, `${indent}  if (req.query.state !== req.session.oauthState) return res.status(403).json({ error: 'Invalid state' });`);
+      return buildResult(lines, lineIdx, before, 'OAuth 콜백에 state 파라미터 검증 추가 (CSRF 방지)');
+    }
+    return null;
+  },
+
+  // ═══════════════════════════════════════════════════
+  // NEW: Server (XXE, Upload, Express, NoSQL, HSTS, Redirect, IDOR)
+  // ═══════════════════════════════════════════════════
+
+  'SCG-SRV-XXE-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/(?:parseXML|DOMParser|xml2js|libxmljs|etree\.parse|xmldom)/i.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines.splice(lineIdx, 0, `${indent}// [보안] XXE 방지: 외부 엔티티 비활성화`);
+      if (/xml2js/i.test(line)) {
+        lines.splice(lineIdx + 2, 0, `${indent}// xml2js는 기본적으로 안전하지만, 입력을 반드시 검증하세요.`);
+      } else if (/DOMParser/i.test(line)) {
+        lines.splice(lineIdx + 2, 0, `${indent}// DOMParser에 사용자 입력 전달 시 입력 길이 제한 + 문자열 검증 필요`);
+      } else {
+        lines.splice(lineIdx + 2, 0, `${indent}// 옵션: { noent: false, noblanks: true, nonet: true }`);
+      }
+      return buildResult(lines, lineIdx + 1, before, 'XXE 방지: XML 파서 외부 엔티티 비활성화 가이드 추가');
+    }
+    return null;
+  },
+
+  'SCG-SRV-UPLOAD-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/multer\s*\(/.test(line) && !/fileFilter/.test(line) && !/limits/.test(line)) {
+      lines[lineIdx] = line.replace(
+        /multer\s*\(\s*\{/,
+        "multer({ limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (req, file, cb) => { const allowed = ['image/jpeg','image/png','application/pdf']; cb(null, allowed.includes(file.mimetype)); },"
+      );
+      return buildResult(lines, lineIdx, before, '파일 업로드 보안: 크기 제한(5MB) + MIME 타입 필터 추가');
+    }
+    return null;
+  },
+
+  'SCG-SRV-EXPRESS-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    if (!/(?:express\s*\(\)|app\s*=\s*express)/.test(line)) return null;
+    const before = line.trim();
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    lines.splice(lineIdx + 1, 0, `${indent}app.set('trust proxy', 1);`);
+    return buildResult(lines, lineIdx, before, "Express app에 trust proxy 설정 추가 (프록시 뒤 클라이언트 IP 정확 추출)");
+  },
+
+  'SCG-SRV-SSRF-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/169\.254\.169\.254|metadata\.google/i.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines[lineIdx] = `${indent}// [보안] 클라우드 메타데이터 접근 차단됨`;
+      lines.splice(lineIdx + 1, 0, `${indent}// 원본: ${before}`);
+      return buildResult(lines, lineIdx, before, '클라우드 메타데이터 엔드포인트 접근 차단 (SSRF 방지)');
+    }
+    return null;
+  },
+
+  'SCG-SRV-NOSQL-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/\.\$/.test(line) || /\$(?:where|regex|gt|lt|ne)\b/.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines.splice(lineIdx, 0, `${indent}// [보안] NoSQL 인젝션 방지: 입력을 String()으로 강제 변환하거나 express-mongo-sanitize 사용`);
+      return { ...buildResult(lines, lineIdx + 1, before, 'NoSQL 오퍼레이터 인젝션 방지 가이드 추가'), imports: ["import mongoSanitize from 'express-mongo-sanitize'; // app.use(mongoSanitize());"] };
+    }
+    return null;
+  },
+
+  'SCG-SRV-VALID-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    if (!/app\.(?:get|post|put|delete|patch)\s*\(/.test(line)) return null;
+    const before = line.trim();
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    lines.splice(lineIdx + 1, 0, `${indent}  // [보안] 입력 검증 필요: const validated = schema.parse(req.body); // zod 사용 권장`);
+    return buildResult(lines, lineIdx, before, 'Express 라우트에 입력 검증(zod) 가이드 추가');
+  },
+
+  'SCG-SRV-HSTS-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    if (!/app\.use\s*\(\s*helmet/i.test(line)) return null;
+    const before = line.trim();
+    if (!/hsts/.test(line)) {
+      lines[lineIdx] = line.replace(/helmet\s*\(\s*\)/, "helmet({ hsts: { maxAge: 31536000, includeSubDomains: true } })");
+      return buildResult(lines, lineIdx, before, 'HSTS 설정 추가 (1년, 서브도메인 포함)');
+    }
+    return null;
+  },
+
+  'SCG-SRV-REDIR-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/(?:res\.redirect|location\s*=)\s*\(?\s*(?:req\.|body|query|params)/i.test(line)) {
+      const indent = line.match(/^(\s*)/)?.[1] ?? '';
+      lines.splice(lineIdx, 0, `${indent}const __allowedHosts = [process.env.APP_HOST ?? 'localhost']; try { const __u = new URL(${line.match(/(?:req\.(?:body|query|params)\.\w+)/)?.[0] ?? 'url'}, 'http://localhost'); if (!__allowedHosts.includes(__u.hostname)) throw new Error(); } catch { return res.redirect('/'); }`);
+      return buildResult(lines, lineIdx, before, '오픈 리다이렉트 방지: 허용 호스트 화이트리스트 검증 추가');
+    }
+    return null;
+  },
+
+  'SCG-SRV-IDOR-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    if (!/(?:findById|findOne|find)\s*\(.*?(?:req\.params|req\.query)/i.test(line)) return null;
+    const before = line.trim();
+    if (!/(?:user_?id|author_?id|owner_?id|req\.user)/i.test(line)) {
+      lines[lineIdx] = line.replace(
+        /(findById|findOne|find)\s*\(\s*\{?\s*/,
+        '$1({ userId: req.user.id, '
+      );
+      return buildResult(lines, lineIdx, before, 'IDOR 방지: 리소스 조회에 소유권 확인(req.user.id) 추가');
+    }
+    return null;
+  },
+
+  // ═══════════════════════════════════════════════════
+  // NEW: Config (Directory Listing, .env)
+  // ═══════════════════════════════════════════════════
+
+  'SCG-MCF-DIR-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    if (/express\.static\s*\(/.test(line) && !/dotfiles/.test(line)) {
+      lines[lineIdx] = line.replace(
+        /express\.static\s*\(\s*(['"][^'"]+['"])\s*\)/,
+        "express.static($1, { dotfiles: 'deny', index: false })"
+      );
+      return buildResult(lines, lineIdx, before, "express.static에 dotfiles:'deny' + index:false 추가 (디렉토리 리스팅 방지)");
+    }
+    return null;
+  },
+
+  'SCG-MCF-ENV-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    const keyMatch = line.match(/^(\w+)\s*=\s*(.+)$/);
+    if (keyMatch && /(?:KEY|SECRET|PASSWORD|TOKEN|CREDENTIAL)/i.test(keyMatch[1]) && keyMatch[2].length > 3 && !/your_|example|placeholder|changeme/i.test(keyMatch[2])) {
+      lines[lineIdx] = `${keyMatch[1]}=\${${keyMatch[1]}}`;
+      return buildResult(lines, lineIdx, before, `.env 민감정보: 실제 값 제거 → 환경변수 참조로 교체`);
+    }
+    return null;
+  },
+
+  // ═══════════════════════════════════════════════════
+  // NEW: In-Memory Storage (다국어)
+  // ═══════════════════════════════════════════════════
+
+  'SCG-SRV-INMEM-001': (code, vuln) => {
+    const ctx = getLine(code, vuln);
+    if (!ctx) return null;
+    const { lines, lineIdx, line } = ctx;
+    const before = line.trim();
+    const lang = getLang(code);
+
+    const varMatch = line.match(/(?:(?:const|let|var|my|local)\s+)?\$?(\w+)\s*[:=]/);
+    const varName = varMatch?.[1] ?? 'users';
+
+    const fix = getInMemoryDbFix(lang, varName);
+    const indent = line.match(/^(\s*)/)?.[1] ?? '';
+    const fixLines = fix.code.split('\n').map(l => `${indent}${l}`);
+    lines.splice(lineIdx, 1, ...fixLines);
+    return { ...buildResult(lines, lineIdx, before, `인메모리 ${varName} → ${lang} DB 연결 코드로 교체`), imports: fix.imports };
   },
 };
 

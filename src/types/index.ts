@@ -1,6 +1,6 @@
 export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type Confidence = 'high' | 'medium' | 'low';
-export type Language = 'javascript' | 'typescript' | 'python' | 'java' | 'unknown';
+export type Language = 'javascript' | 'typescript' | 'python' | 'java' | 'php' | 'go' | 'ruby' | 'csharp' | 'unknown';
 export type Context = 'frontend' | 'backend' | 'fullstack' | 'api' | 'config';
 
 export interface CodeLocation {
@@ -126,16 +126,6 @@ export interface DependencyScanResult {
   recommendations: string[];
 }
 
-export interface SecureCodeResult {
-  original?: string;
-  secure: string;
-  language: Language;
-  explanation: string;
-  explanationKo: string;
-  appliedPatterns: string[];
-  securityFeatures: string[];
-}
-
 export interface ConfigAuditFinding {
   file: string;
   line?: number;
@@ -147,28 +137,3 @@ export interface ConfigAuditFinding {
   recommendationKo: string;
 }
 
-export interface ConfigAuditResult {
-  scanId: string;
-  timestamp: string;
-  file: string;
-  findings: ConfigAuditFinding[];
-  summary: ScanSummary;
-}
-
-export interface GuardianConfig {
-  analysisMode: 'lite' | 'standard' | 'deep';
-  severityThreshold: Severity;
-  enabledRuleSets: string[];
-  excludeRules: string[];
-  maxFileSize: number;
-  excludePaths: string[];
-}
-
-export const DEFAULT_CONFIG: GuardianConfig = {
-  analysisMode: 'lite',
-  severityThreshold: 'low',
-  enabledRuleSets: ['owasp', 'cwe-top25'],
-  excludeRules: [],
-  maxFileSize: 500 * 1024,
-  excludePaths: ['node_modules', '.git', 'dist', 'build', '__pycache__', '.next'],
-};

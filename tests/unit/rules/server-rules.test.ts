@@ -3,8 +3,8 @@ import { scanCode } from '../../../src/engine/scanner.js';
 import { serverRules } from '../../../src/rules/server-rules.js';
 
 describe('Server Security Rules', () => {
-  it('has 14 rules loaded', () => {
-    expect(serverRules.length).toBe(14);
+  it('has 15 rules loaded', () => {
+    expect(serverRules.length).toBe(15);
   });
 
   it('every rule has unique ID starting with SCG-SRV', () => {

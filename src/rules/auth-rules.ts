@@ -14,15 +14,15 @@ export const authRules: SecurityRule[] = [
     descriptionKo: '비밀번호나 시크릿이 환경변수 대신 소스코드에 하드코딩되어 있습니다.',
     patterns: [
       {
-        regex: /(?:password|passwd|pwd|secret|apiKey|api_key|apiSecret|api_secret|accessToken|access_token|privateKey|private_key)\s*[:=]\s*['"][^'"]{4,}['"]/i,
-        negativeRegex: /(?:process\.env|os\.environ|getenv|config\.|placeholder|example|changeme|xxx|your_|<.*>|\*{3,})/i,
+        regex: /(?:password|passwd|pwd|secret|apiKey|api_key|apiSecret|api_secret|accessToken|access_token|privateKey|private_key)\s*[:=]{1,2}\s*['"][^'"]{4,}['"]/i,
+        negativeRegex: /(?:process\.env|os\.environ|getenv|os\.Getenv|System\.getenv|ENV\[|Environment\.Get|config\.|placeholder|example|changeme|xxx|your_|<.*>|\*{3,})/i,
       },
       {
         regex: /(?:PRIVATE.KEY|SECRET.KEY|JWT.SECRET|DB.PASSWORD|DATABASE.PASSWORD)\s*[:=]\s*['"][^'"]{4,}['"]/i,
-        negativeRegex: /process\.env|os\.environ|getenv/i,
+        negativeRegex: /process\.env|os\.environ|getenv|os\.Getenv|System\.getenv|ENV\[/i,
       },
     ],
-    languages: ['javascript', 'typescript', 'python', 'java'],
+    languages: ['javascript', 'typescript', 'python', 'java', 'php', 'go', 'ruby', 'csharp'],
     remediation: {
       description: 'Store secrets in environment variables or a secure vault. Never commit secrets to source code.',
       descriptionKo: '시크릿은 환경변수나 보안 볼트에 저장하세요. 소스코드에 시크릿을 절대 커밋하지 마세요.',
@@ -59,7 +59,7 @@ const secret = await secretManager.getSecret('my-api-key');`,
       { regex: /-----BEGIN\s(?:RSA\s)?PRIVATE\sKEY-----/ },
       { regex: /eyJ[A-Za-z0-9-_]{10,}\.eyJ[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_.]{10,}/ },
     ],
-    languages: ['javascript', 'typescript', 'python', 'java'],
+    languages: ['javascript', 'typescript', 'python', 'java', 'php', 'go', 'ruby', 'csharp'],
     remediation: {
       description: 'Remove API keys from source code immediately. Rotate compromised keys. Use environment variables.',
       descriptionKo: '소스코드에서 API 키를 즉시 제거하세요. 노출된 키를 교체하세요. 환경변수를 사용하세요.',
@@ -91,7 +91,7 @@ const apiKey = process.env.OPENAI_API_KEY;`,
         regex: /(?:md5|sha1)\s*\(.*?(?:password|passwd|pwd)/i,
       },
     ],
-    languages: ['javascript', 'typescript', 'python', 'java'],
+    languages: ['javascript', 'typescript', 'python', 'java', 'php', 'go', 'ruby', 'csharp'],
     remediation: {
       description: 'Use bcrypt, scrypt, or Argon2 for password hashing. Never use MD5/SHA1 for passwords.',
       descriptionKo: '비밀번호 해싱에 bcrypt, scrypt, 또는 Argon2를 사용하세요. MD5/SHA1은 절대 사용하지 마세요.',
@@ -168,8 +168,36 @@ const payload = jwt.verify(token, process.env.JWT_SECRET, {
       {
         regex: /Set-Cookie.*?(?!HttpOnly|Secure|SameSite)/i,
       },
+      {
+        regex: /httpOnly\s*:\s*true[^}]*\}/i,
+        negativeRegex: /secure\s*:\s*true/i,
+      },
+      {
+        regex: /SESSION_COOKIE_SECURE.*?=\s*False/i,
+      },
+      {
+        regex: /SESSION_COOKIE_HTTPONLY.*?=\s*False/i,
+      },
+      {
+        regex: /SESSION_COOKIE_SAMESITE.*?=\s*(?:None|['"]{2})/i,
+      },
+      {
+        regex: /cookie_secure\s*=\s*(?:False|false|0|off)/i,
+      },
+      {
+        regex: /cookie_httponly\s*=\s*(?:False|false|0|off)/i,
+      },
+      {
+        regex: /session\.cookie_secure\s*,\s*(?:false|0)/i,
+      },
+      {
+        regex: /session\.cookie_httponly\s*,\s*(?:false|0)/i,
+      },
+      {
+        regex: /(?:httpOnly|secure)\s*:\s*false/i,
+      },
     ],
-    languages: ['javascript', 'typescript'],
+    languages: ['javascript', 'typescript', 'python', 'php', 'ruby', 'go', 'java', 'csharp'],
     remediation: {
       description: 'Set httpOnly, secure, and sameSite flags on all session cookies.',
       descriptionKo: '모든 세션 쿠키에 httpOnly, secure, sameSite 플래그를 설정하세요.',
@@ -262,6 +290,58 @@ app.post('/transfer', csrfProtection, (req, res) => { ... });`,
       ],
     },
     tags: ['csrf', 'access-control'],
+  },
+
+  {
+    id: 'SCG-AUF-CSRF-003',
+    title: 'Logout via GET Request (CSRF Risk)',
+    titleKo: 'GET 방식 로그아웃 (CSRF 취약)',
+    severity: 'high',
+    confidence: 'high',
+    category: 'A01:2021-Broken Access Control',
+    cweId: 'CWE-352',
+    owaspCategory: 'A01',
+    description: 'Logout endpoint uses GET method. Attackers can force logout via <img>, <a>, or <script src> tags without user interaction.',
+    descriptionKo: '로그아웃 엔드포인트가 GET 방식입니다. 공격자가 <img>, <a>, <script src> 태그로 사용자 모르게 강제 로그아웃시킬 수 있습니다.',
+    patterns: [
+      {
+        regex: /app\.get\s*\(\s*['"`][^'"`]*logout[^'"`]*['"`]/i,
+      },
+      {
+        regex: /@app\.route\s*\(\s*['"`][^'"`]*logout[^'"`]*['"`]\s*\)/i,
+        negativeRegex: /methods\s*=\s*\[['"`]POST['"`]\]/i,
+      },
+      {
+        regex: /router\.get\s*\(\s*['"`][^'"`]*logout[^'"`]*['"`]/i,
+      },
+    ],
+    languages: ['javascript', 'typescript', 'python'],
+    remediation: {
+      description: 'Change logout to POST method and include a CSRF token in the form.',
+      descriptionKo: '로그아웃을 POST 방식으로 변경하고 폼에 CSRF 토큰을 포함하세요.',
+      secureExample: `// ✅ Secure (Express): POST 방식 로그아웃
+app.post('/logout', csrfProtection, (req, res) => {
+  req.session.destroy();
+  res.redirect('/login');
+});
+
+// ✅ Secure (HTML 폼)
+<form action="/logout" method="POST">
+  <input type="hidden" name="_csrf" value="{{ csrfToken }}">
+  <button type="submit">로그아웃</button>
+</form>
+
+# ✅ Secure (Flask)
+@app.route('/logout', methods=['POST'])
+@login_required
+def logout():
+    session.clear()
+    return redirect(url_for('login'))`,
+      references: [
+        'https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html',
+      ],
+    },
+    tags: ['csrf', 'logout', 'get-method', 'access-control'],
   },
 
   {

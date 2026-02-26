@@ -563,27 +563,3 @@ export function getKnowledgeByCwe(cweId: string): PortSwiggerKnowledge | undefin
   return PORTSWIGGER_KB.find((k) => k.cweIds.includes(cweId));
 }
 
-export function getKnowledgeByCategory(category: string): PortSwiggerKnowledge | undefined {
-  return PORTSWIGGER_KB.find((k) => k.category === category);
-}
-
-export function getAllCategories(): string[] {
-  return PORTSWIGGER_KB.map((k) => k.category);
-}
-
-export function getAllKnowledge(): PortSwiggerKnowledge[] {
-  return [...PORTSWIGGER_KB];
-}
-
-export function findKnowledgeForCweIds(cweIds: string[]): PortSwiggerKnowledge[] {
-  const results: PortSwiggerKnowledge[] = [];
-  const seen = new Set<string>();
-  for (const cweId of cweIds) {
-    const match = getKnowledgeByCwe(cweId);
-    if (match && !seen.has(match.category)) {
-      seen.add(match.category);
-      results.push(match);
-    }
-  }
-  return results;
-}

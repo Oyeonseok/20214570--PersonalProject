@@ -15,33 +15,12 @@ export const ALL_RULES: SecurityRule[] = [
   ...serverRules,
 ];
 
-export const RULE_CATEGORIES = {
-  injection: injectionRules,
-  xss: xssRules,
-  auth: authRules,
-  crypto: cryptoRules,
-  config: configRules,
-  server: serverRules,
-} as const;
-
 export function getRuleById(ruleId: string): SecurityRule | undefined {
   return ALL_RULES.find((r) => r.id === ruleId);
 }
 
-export function getRulesBySeverity(severity: string): SecurityRule[] {
-  return ALL_RULES.filter((r) => r.severity === severity);
-}
-
 export function getRulesByLanguage(language: string): SecurityRule[] {
   return ALL_RULES.filter((r) => r.languages.includes(language as any));
-}
-
-export function getRulesByCwe(cweId: string): SecurityRule[] {
-  return ALL_RULES.filter((r) => r.cweId === cweId);
-}
-
-export function getRulesByOwasp(owaspCategory: string): SecurityRule[] {
-  return ALL_RULES.filter((r) => r.owaspCategory === owaspCategory);
 }
 
 export function getRulesForFramework(framework: string): SecurityRule[] {

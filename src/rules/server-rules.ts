@@ -88,7 +88,7 @@ function safeMerge(target, source) {
         negativeRegex: /resolve_entities.*False|no_network.*True/i,
       },
     ],
-    languages: ['javascript', 'typescript', 'python', 'java'],
+    languages: ['javascript', 'typescript', 'python', 'java', 'php', 'go', 'ruby', 'csharp'],
     remediation: {
       description: 'Disable external entities and DTD processing in XML parsers. Use defusedxml in Python.',
       descriptionKo: 'XML 파서에서 외부 엔티티와 DTD 처리를 비활성화하세요. Python은 defusedxml을 사용하세요.',
@@ -607,5 +607,42 @@ if (!post) return res.status(404).json({ error: 'Not found' });`,
       ],
     },
     tags: ['idor', 'authorization', 'server', 'access-control'],
+  },
+
+  {
+    id: 'SCG-SRV-INMEM-001',
+    title: 'In-Memory Data Store Used as Database',
+    titleKo: '인메모리 자료구조를 DB 대용으로 사용',
+    severity: 'high',
+    confidence: 'medium',
+    category: 'A04:2021-Insecure Design',
+    cweId: 'CWE-311',
+    owaspCategory: 'A04',
+    description: 'Using in-memory data structures (dict, list, Map, array) as a persistent data store causes data loss on restart and does not scale. Use a proper database.',
+    descriptionKo: '인메모리 자료구조(dict, list, Map, array)를 영구 저장소로 사용하면 서버 재시작 시 데이터가 소실되고 확장이 불가능합니다. 적절한 데이터베이스를 사용하세요.',
+    patterns: [
+      {
+        regex: /(?:^|\n)\s*(?:const|let|var|my|local)?\s*\$?(?:users|accounts|sessions|tokens|database|db|data_store|user_db|user_store|credentials)\s*[:=]\s*(?:\{\}|\[\]|new\s+Map|new\s+HashMap|new\s+Dictionary|dict\s*\(\)|array\s*\(\)|map\[)/i,
+        negativeRegex: /(?:sqlite|postgres|mysql|mongo|redis|SQLAlchemy|prisma|sequelize|typeorm|ActiveRecord|GORM|Eloquent|Entity|knex|drizzle|mongoose)/i,
+      },
+    ],
+    languages: ['javascript', 'typescript', 'python', 'java', 'php', 'go', 'ruby', 'csharp'],
+    remediation: {
+      description: 'Replace in-memory stores with a proper database (SQLite for dev, PostgreSQL/MySQL for production).',
+      descriptionKo: '인메모리 저장소를 적절한 데이터베이스로 교체하세요 (개발: SQLite, 운영: PostgreSQL/MySQL).',
+      secureExample: `# Python (SQLite)
+import sqlite3
+db = sqlite3.connect('app.db')
+db.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT)')
+
+// JavaScript (better-sqlite3)
+import Database from 'better-sqlite3';
+const db = new Database('app.db');
+db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT, password_hash TEXT)');`,
+      references: [
+        'https://cheatsheetseries.owasp.org/cheatsheets/Database_Security_Cheat_Sheet.html',
+      ],
+    },
+    tags: ['database', 'design', 'server', 'data-persistence'],
   },
 ];

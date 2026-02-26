@@ -44,10 +44,6 @@ function setCache<T>(key: string, data: T): void {
   cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
 }
 
-export function clearNvdCache(): void {
-  cache.clear();
-}
-
 function getApiKey(): string | undefined {
   return process.env.NVD_API_KEY || undefined;
 }

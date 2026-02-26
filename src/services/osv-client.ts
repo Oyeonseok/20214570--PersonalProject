@@ -70,10 +70,6 @@ function setCache<T>(key: string, data: T): void {
   cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
 }
 
-export function clearOsvCache(): void {
-  cache.clear();
-}
-
 async function fetchWithTimeout(url: string, options: RequestInit, timeout = DEFAULT_TIMEOUT): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -153,11 +149,3 @@ export function extractFixedVersion(vuln: OsvVulnDetail, packageName: string): s
   return undefined;
 }
 
-export function extractSeverity(vuln: OsvVulnDetail): string | undefined {
-  if (vuln.severity && vuln.severity.length > 0) {
-    return vuln.severity[0].score;
-  }
-  const dbSpecific = vuln.database_specific as Record<string, unknown> | undefined;
-  if (dbSpecific?.severity) return String(dbSpecific.severity);
-  return undefined;
-}
