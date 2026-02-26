@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CWE_DATABASE, getCweResource } from '../../../src/resources/cwe-database.js';
-import { OWASP_TOP10_2021, getOwaspResource } from '../../../src/resources/owasp-top10.js';
+import { OWASP_TOP10_2025, getOwaspResource } from '../../../src/resources/owasp-top10.js';
 import { SECURE_PATTERNS, getSecurePatternsResource } from '../../../src/resources/secure-patterns.js';
 
 describe('CWE Database', () => {
@@ -36,12 +36,12 @@ describe('CWE Database', () => {
 
 describe('OWASP Top 10', () => {
   it('has 10 entries', () => {
-    expect(OWASP_TOP10_2021.length).toBe(10);
+    expect(OWASP_TOP10_2025.length).toBe(10);
   });
 
   it('every entry has required fields', () => {
-    for (const item of OWASP_TOP10_2021) {
-      expect(item.id).toMatch(/^A\d{2}:2021$/);
+    for (const item of OWASP_TOP10_2025) {
+      expect(item.id).toMatch(/^A\d{2}:2025$/);
       expect(item.name).toBeTruthy();
       expect(item.nameKo).toBeTruthy();
       expect(item.prevention.length).toBeGreaterThan(0);
@@ -51,14 +51,14 @@ describe('OWASP Top 10', () => {
   });
 
   it('getOwaspResource returns formatted text', () => {
-    const result = getOwaspResource('2021');
+    const result = getOwaspResource();
     expect(result).toContain('OWASP Top 10');
     expect(result).toContain('A01');
   });
 
-  it('getOwaspResource returns error for unsupported year', () => {
-    const result = getOwaspResource('2019');
-    expect(result).toContain('2021만 지원');
+  it('getOwaspResource contains 2025', () => {
+    const result = getOwaspResource();
+    expect(result).toContain('2025');
   });
 });
 

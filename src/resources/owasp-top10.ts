@@ -4,21 +4,19 @@ export interface OwaspItem {
   nameKo: string;
   description: string;
   descriptionKo: string;
-  prevalence: string;
   cwes: string[];
   prevention: string[];
   preventionKo: string[];
 }
 
-export const OWASP_TOP10_2021: OwaspItem[] = [
+export const OWASP_TOP10_2025: OwaspItem[] = [
   {
-    id: 'A01:2021',
+    id: 'A01:2025',
     name: 'Broken Access Control',
     nameKo: '취약한 접근 제어',
-    description: 'Restrictions on what authenticated users are allowed to do are often not properly enforced.',
-    descriptionKo: '인증된 사용자가 할 수 있는 작업에 대한 제한이 제대로 적용되지 않는 경우가 많습니다.',
-    prevalence: '94% of applications tested had some form of broken access control',
-    cwes: ['CWE-200', 'CWE-201', 'CWE-352', 'CWE-22', 'CWE-425', 'CWE-639'],
+    description: 'Restrictions on what authenticated users are allowed to do are often not properly enforced. SSRF is now merged into this category.',
+    descriptionKo: '인증된 사용자가 할 수 있는 작업에 대한 제한이 제대로 적용되지 않습니다. SSRF가 이 카테고리에 통합되었습니다.',
+    cwes: ['CWE-200', 'CWE-201', 'CWE-352', 'CWE-22', 'CWE-425', 'CWE-639', 'CWE-918'],
     prevention: [
       'Deny by default (except public resources)',
       'Implement access control once and reuse throughout the application',
@@ -26,6 +24,7 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
       'Disable directory listing',
       'Log access control failures and alert admins',
       'Rate limit API access',
+      'Validate and sanitize all user-supplied URLs (SSRF prevention)',
     ],
     preventionKo: [
       '기본적으로 접근을 거부하세요 (공개 리소스 제외)',
@@ -34,15 +33,61 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
       '디렉토리 리스팅을 비활성화하세요',
       '접근 제어 실패를 로깅하고 관리자에게 알리세요',
       'API 접근 속도를 제한하세요',
+      '사용자 제공 URL을 검증하고 허용 목록으로 제한하세요 (SSRF 방지)',
     ],
   },
   {
-    id: 'A02:2021',
+    id: 'A02:2025',
+    name: 'Security Misconfiguration',
+    nameKo: '보안 설정 오류',
+    description: 'Missing or incorrect security hardening across the application stack. Moved up from #5 in 2021.',
+    descriptionKo: '애플리케이션 스택 전반에 걸친 보안 강화 누락 또는 오류입니다. 2021년 5위에서 상승했습니다.',
+    cwes: ['CWE-16', 'CWE-611', 'CWE-1004'],
+    prevention: [
+      'Automated hardening process',
+      'Minimal platform without unnecessary features',
+      'Review and update configurations regularly',
+      'Segmented application architecture',
+      'Send security directives to clients (headers)',
+    ],
+    preventionKo: [
+      '자동화된 보안 강화 프로세스를 구축하세요',
+      '불필요한 기능이 없는 최소 플랫폼을 사용하세요',
+      '설정을 정기적으로 검토하고 업데이트하세요',
+      '분리된 애플리케이션 아키텍처를 사용하세요',
+      '클라이언트에 보안 헤더를 전송하세요',
+    ],
+  },
+  {
+    id: 'A03:2025',
+    name: 'Software Supply Chain Failures',
+    nameKo: '소프트웨어 공급망 실패',
+    description: 'New category. Breakdowns in the process of building, distributing, or updating software via third-party dependencies, build systems, and distribution infrastructure.',
+    descriptionKo: '신규 카테고리. 서드파티 의존성, 빌드 시스템, 배포 인프라를 통한 소프트웨어 빌드·배포·업데이트 과정의 취약점입니다.',
+    cwes: ['CWE-477', 'CWE-1104', 'CWE-1329', 'CWE-1395'],
+    prevention: [
+      'Maintain a Software Bill of Materials (SBOM)',
+      'Track all direct and transitive dependencies',
+      'Remove unused dependencies',
+      'Continuously monitor CVE/NVD/OSV for component vulnerabilities',
+      'Only obtain components from official sources over secure links',
+      'Harden CI/CD pipeline with separation of duties',
+    ],
+    preventionKo: [
+      '소프트웨어 자재 명세서(SBOM)를 관리하세요',
+      '직접 및 전이적 의존성을 모두 추적하세요',
+      '사용하지 않는 의존성을 제거하세요',
+      'CVE/NVD/OSV에서 컴포넌트 취약점을 지속적으로 모니터링하세요',
+      '보안 링크를 통해 공식 소스에서만 컴포넌트를 받으세요',
+      '직무 분리를 적용하여 CI/CD 파이프라인을 강화하세요',
+    ],
+  },
+  {
+    id: 'A04:2025',
     name: 'Cryptographic Failures',
     nameKo: '암호화 실패',
     description: 'Failures related to cryptography which often lead to sensitive data exposure.',
     descriptionKo: '민감한 데이터 노출로 이어지는 암호화 관련 실패입니다.',
-    prevalence: 'Notable CWEs included are CWE-259, CWE-327, and CWE-331',
     cwes: ['CWE-259', 'CWE-327', 'CWE-331', 'CWE-321', 'CWE-328'],
     prevention: [
       'Classify data by sensitivity level',
@@ -62,12 +107,11 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
     ],
   },
   {
-    id: 'A03:2021',
+    id: 'A05:2025',
     name: 'Injection',
     nameKo: '인젝션',
     description: 'Injection flaws occur when untrusted data is sent to an interpreter as part of a command or query.',
     descriptionKo: '신뢰할 수 없는 데이터가 명령어나 쿼리의 일부로 인터프리터에 전송될 때 발생합니다.',
-    prevalence: '94% of applications were tested for injection with a max incidence rate of 19%',
     cwes: ['CWE-79', 'CWE-89', 'CWE-73', 'CWE-78', 'CWE-94'],
     prevention: [
       'Use parameterized queries / prepared statements',
@@ -85,12 +129,11 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
     ],
   },
   {
-    id: 'A04:2021',
+    id: 'A06:2025',
     name: 'Insecure Design',
     nameKo: '안전하지 않은 설계',
     description: 'Risks related to design and architectural flaws.',
     descriptionKo: '설계 및 아키텍처 결함과 관련된 위험입니다.',
-    prevalence: 'New category for 2021',
     cwes: ['CWE-209', 'CWE-256', 'CWE-501', 'CWE-522'],
     prevention: [
       'Use threat modeling for critical flows',
@@ -108,58 +151,11 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
     ],
   },
   {
-    id: 'A05:2021',
-    name: 'Security Misconfiguration',
-    nameKo: '보안 설정 오류',
-    description: 'Missing or incorrect security hardening across the application stack.',
-    descriptionKo: '애플리케이션 스택 전반에 걸친 보안 강화 누락 또는 오류입니다.',
-    prevalence: '90% of applications were tested for misconfiguration',
-    cwes: ['CWE-16', 'CWE-611', 'CWE-1004'],
-    prevention: [
-      'Automated hardening process',
-      'Minimal platform without unnecessary features',
-      'Review and update configurations regularly',
-      'Segmented application architecture',
-      'Send security directives to clients (headers)',
-    ],
-    preventionKo: [
-      '자동화된 보안 강화 프로세스를 구축하세요',
-      '불필요한 기능이 없는 최소 플랫폼을 사용하세요',
-      '설정을 정기적으로 검토하고 업데이트하세요',
-      '분리된 애플리케이션 아키텍처를 사용하세요',
-      '클라이언트에 보안 지시를 전송하세요 (헤더)',
-    ],
-  },
-  {
-    id: 'A06:2021',
-    name: 'Vulnerable and Outdated Components',
-    nameKo: '취약하고 오래된 컴포넌트',
-    description: 'Using components with known vulnerabilities.',
-    descriptionKo: '알려진 취약점이 있는 컴포넌트를 사용합니다.',
-    prevalence: 'Only category with no CVEs mapped',
-    cwes: ['CWE-1104'],
-    prevention: [
-      'Remove unused dependencies',
-      'Continuously inventory component versions',
-      'Monitor CVE and NVD for vulnerabilities',
-      'Only obtain components from official sources via secure links',
-      'Monitor for unmaintained libraries',
-    ],
-    preventionKo: [
-      '사용하지 않는 의존성을 제거하세요',
-      '컴포넌트 버전을 지속적으로 관리하세요',
-      'CVE 및 NVD에서 취약점을 모니터링하세요',
-      '보안 링크를 통해 공식 소스에서만 컴포넌트를 받으세요',
-      '관리되지 않는 라이브러리를 모니터링하세요',
-    ],
-  },
-  {
-    id: 'A07:2021',
-    name: 'Identification and Authentication Failures',
-    nameKo: '식별 및 인증 실패',
+    id: 'A07:2025',
+    name: 'Authentication Failures',
+    nameKo: '인증 실패',
     description: 'Weaknesses in authentication and session management.',
     descriptionKo: '인증 및 세션 관리의 취약점입니다.',
-    prevalence: 'Previously "Broken Authentication"',
     cwes: ['CWE-297', 'CWE-287', 'CWE-384', 'CWE-798'],
     prevention: [
       'Implement multi-factor authentication',
@@ -177,12 +173,11 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
     ],
   },
   {
-    id: 'A08:2021',
-    name: 'Software and Data Integrity Failures',
+    id: 'A08:2025',
+    name: 'Software or Data Integrity Failures',
     nameKo: '소프트웨어 및 데이터 무결성 실패',
     description: 'Code and infrastructure that does not protect against integrity violations.',
     descriptionKo: '무결성 위반을 방지하지 않는 코드 및 인프라입니다.',
-    prevalence: 'New category for 2021, includes insecure deserialization',
     cwes: ['CWE-502', 'CWE-829'],
     prevention: [
       'Use digital signatures to verify software/data integrity',
@@ -200,12 +195,11 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
     ],
   },
   {
-    id: 'A09:2021',
-    name: 'Security Logging and Monitoring Failures',
-    nameKo: '보안 로깅 및 모니터링 실패',
+    id: 'A09:2025',
+    name: 'Security Logging and Alerting Failures',
+    nameKo: '보안 로깅 및 알림 실패',
     description: 'Without logging and monitoring, breaches cannot be detected.',
     descriptionKo: '로깅 및 모니터링 없이는 침해를 감지할 수 없습니다.',
-    prevalence: 'Helps detect, escalate, and respond to active breaches',
     cwes: ['CWE-117', 'CWE-223', 'CWE-532', 'CWE-778'],
     prevention: [
       'Log all login, access control, and server-side input validation failures',
@@ -223,40 +217,37 @@ export const OWASP_TOP10_2021: OwaspItem[] = [
     ],
   },
   {
-    id: 'A10:2021',
-    name: 'Server-Side Request Forgery (SSRF)',
-    nameKo: '서버 사이드 요청 위조 (SSRF)',
-    description: 'SSRF flaws occur when a web application fetches a remote resource without validating the user-supplied URL.',
-    descriptionKo: '웹 앱이 사용자 제공 URL을 검증하지 않고 원격 리소스를 가져올 때 발생합니다.',
-    prevalence: 'New category for 2021',
-    cwes: ['CWE-918'],
+    id: 'A10:2025',
+    name: 'Mishandling of Exceptional Conditions',
+    nameKo: '예외 조건 오처리',
+    description: 'New category. Improper error handling, logical errors, failing open, and other scenarios from abnormal conditions that can expose sensitive data or enable attacks.',
+    descriptionKo: '신규 카테고리. 비정상적인 조건에서 발생하는 부적절한 오류 처리, 논리적 오류, 실패 개방(Fail Open) 등으로 민감 데이터 노출이나 공격을 허용할 수 있습니다.',
+    cwes: ['CWE-209', 'CWE-234', 'CWE-274', 'CWE-476', 'CWE-636', 'CWE-703', 'CWE-754', 'CWE-755'],
     prevention: [
-      'Sanitize and validate all client-supplied input data',
-      'Enforce URL schema, port, and destination with allowlist',
-      'Do not send raw responses to clients',
-      'Disable HTTP redirections',
-      'Use network segmentation to block SSRF impact',
+      'Catch every possible error directly at the place where it occurs',
+      'Implement a global exception handler as a safety net',
+      'Never expose internal error details to users',
+      'Roll back transactions completely on failure (fail closed)',
+      'Add rate limiting and resource quotas to prevent exceptional conditions',
+      'Centralize error handling, logging, and alerting',
     ],
     preventionKo: [
-      '모든 클라이언트 제공 입력 데이터를 검증하세요',
-      '허용 목록으로 URL 스키마, 포트, 대상을 제한하세요',
-      '원시 응답을 클라이언트에 전송하지 마세요',
-      'HTTP 리다이렉션을 비활성화하세요',
-      '네트워크 분리로 SSRF 영향을 차단하세요',
+      '발생 지점에서 직접 모든 가능한 오류를 처리하세요',
+      '안전망으로 전역 예외 핸들러를 구현하세요',
+      '내부 오류 세부 정보를 사용자에게 노출하지 마세요',
+      '실패 시 트랜잭션을 완전히 롤백하세요 (Fail Closed)',
+      '예외 조건 예방을 위해 Rate Limiting과 리소스 할당량을 적용하세요',
+      '오류 처리, 로깅, 알림을 중앙화하세요',
     ],
   },
 ];
 
-export function getOwaspResource(year: string = '2021'): string {
-  if (year !== '2021') {
-    return `⚠️ 현재 OWASP Top 10 2021만 지원합니다.`;
-  }
-
+export function getOwaspResource(): string {
   const lines: string[] = [];
-  lines.push('# OWASP Top 10 - 2021');
+  lines.push('# OWASP Top 10 - 2025');
   lines.push('');
 
-  for (const item of OWASP_TOP10_2021) {
+  for (const item of OWASP_TOP10_2025) {
     lines.push(`## ${item.id} - ${item.nameKo} (${item.name})`);
     lines.push('');
     lines.push(item.descriptionKo);
