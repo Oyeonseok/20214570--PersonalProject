@@ -206,3 +206,8 @@ export function cvssToSeverity(score: number): 'critical' | 'high' | 'medium' | 
   if (score > 0) return 'low';
   return 'info';
 }
+
+export function clearNvdCache(): void {
+  cache.clear();
+  requestTimestamps.length = 0;
+}

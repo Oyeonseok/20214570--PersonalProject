@@ -28,3 +28,11 @@ export function getRulesForFramework(framework: string): SecurityRule[] {
     (r) => !r.frameworks || r.frameworks.length === 0 || r.frameworks.includes(framework)
   );
 }
+
+export function getRulesBySeverity(severity: string): SecurityRule[] {
+  return ALL_RULES.filter((r) => r.severity === severity);
+}
+
+export function getRulesByCwe(cweId: string): SecurityRule[] {
+  return ALL_RULES.filter((r) => r.cweId === cweId);
+}

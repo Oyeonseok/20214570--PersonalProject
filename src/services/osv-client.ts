@@ -149,3 +149,7 @@ export function extractFixedVersion(vuln: OsvVulnDetail, packageName: string): s
   return undefined;
 }
 
+export function clearOsvCache(): void {
+  cache.clear();
+}
+

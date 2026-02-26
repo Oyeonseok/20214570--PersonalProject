@@ -17,6 +17,14 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 1,
 };
 
+export function severityToNumber(severity: Severity): number {
+  return SEVERITY_ORDER[severity];
+}
+
+export function compareSeverity(a: Severity, b: Severity): number {
+  return SEVERITY_ORDER[b] - SEVERITY_ORDER[a];
+}
+
 export function meetsThreshold(severity: Severity, threshold: Severity): boolean {
   return SEVERITY_ORDER[severity] >= SEVERITY_ORDER[threshold];
 }
